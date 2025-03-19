@@ -113,9 +113,34 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-none outline-none; /* Remove bordas e outlines indesejados */
   }
   body {
-    @apply bg-neutral-100 text-neutral-900;
+    @apply bg-neutral-100 text-neutral-900; /* Mantém o fundo e texto padrão */
   }
+}
+
+/* Garantir que elementos interativos tenham cursor pointer */
+button,
+a,
+[role="button"],
+[type="submit"],
+[type="checkbox"] {
+  @apply cursor-pointer;
+}
+
+/* Garantir que inputs de texto tenham cursor text */
+input[type="text"],
+input[type="email"],
+input[type="url"],
+input[type="datetime-local"],
+textarea {
+  @apply cursor-text;
+}
+
+/* Garantir que elementos desabilitados tenham cursor not-allowed */
+button:disabled,
+input:disabled,
+[aria-disabled="true"] {
+  @apply cursor-not-allowed;
 }

@@ -12,7 +12,7 @@ module.exports = {
       colors: {
         primary: {
           500: "#3B82F6", // Azul principal
-          600: "#2563EB",
+          600: "#2563EB", // Azul mais escuro para hover
         },
         secondary: {
           500: "#10B981", // Verde secundário
@@ -21,6 +21,11 @@ module.exports = {
           900: "#1F2937", // Cinza escuro
           100: "#F9FAFB", // Cinza claro
         },
+        border: "#E5E7EB", // Cor da borda (usada pelo Shadcn UI)
+        input: "#E5E7EB", // Cor do input
+        ring: "#3B82F6", // Cor do anel de foco
+        background: "#F9FAFB", // Cor de fundo (neutral-100)
+        foreground: "#1F2937", // Cor do texto (neutral-900)
       },
       fontFamily: {
         sans: ["Inter", "sans-serif"],
