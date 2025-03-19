@@ -1,125 +1,136 @@
 "use client";
 
 import { useState } from "react";
-import axios from "axios";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
 import { z } from "zod";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import axios from "axios";
 
 // Schema de validação com Zod
 const artistSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório"),
   email: z.string().email("Email inválido"),
   bio: z.string().optional(),
-  portfolioUrl: z.string().url("URL inválida").optional(), // Ajustado para portfolioUrl
+  portfolioUrl: z.string().url("URL inválida").optional(),
 });
 
+type ArtistForm = z.infer<typeof artistSchema>;
+
 export default function NewArtist() {
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    bio: "",
-    portfolioUrl: "", // Ajustado para portfolioUrl
+  const form = useForm<ArtistForm>({
+    resolver: zodResolver(artistSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      bio: "",
+      portfolioUrl: "",
+    },
   });
-  const [errors, setErrors] = useState<
-    Partial<Record<keyof typeof formData, string>>
-  >({});
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (data: ArtistForm) => {
     try {
-      artistSchema.parse(formData);
-      setErrors({});
-
       const response = await axios.post(
         "http://localhost:5000/api/artists",
-        formData,
+        data,
         { headers: { "Content-Type": "application/json" } }
       );
       alert(`Artista cadastrado! ID: ${response.data.id}`);
-      setFormData({ name: "", email: "", bio: "", portfolioUrl: "" });
+      form.reset();
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        const fieldErrors = error.errors.reduce(
-          (acc: Record<string, string>, err) => {
-            acc[err.path[0]] = err.message;
-            return acc;
-          },
-          {}
+      if (axios.isAxiosError(error)) {
+        console.error(
+          "Erro na requisição:",
+          error.response?.data || error.message
         );
-        setErrors(fieldErrors);
+        alert(
+          `Erro ao cadastrar artista: ${
+            error.response?.data?.error || error.message
+          }`
+        );
       } else {
-        if (axios.isAxiosError(error)) {
-          console.error(
-            "Erro na requisição:",
-            error.response?.data || error.message
-          );
-          alert(
-            `Erro ao cadastrar artista: ${
-              error.response?.data?.error || error.message
-            }`
-          );
-        } else {
-          console.error("Erro desconhecido:", error);
-          alert(`Erro ao cadastrar artista: ${String(error)}`);
-        }
+        console.error("Erro desconhecido:", error);
+        alert(`Erro ao cadastrar artista: ${String(error)}`);
       }
     }
   };
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-bold mb-4">Cadastrar Artista</h1>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <input
-            type="text"
-            placeholder="Nome"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            className="border p-2 w-full"
+      <h1 className="text-3xl font-bold mb-6 text-neutral-900">
+        Cadastrar Artista
+      </h1>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Nome</FormLabel>
+                <FormControl>
+                  <Input placeholder="Digite o nome" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-          {errors.name && <p className="text-red-500 text-sm">{errors.name}</p>}
-        </div>
-        <div>
-          <input
-            type="email"
-            placeholder="Email"
-            value={formData.email}
-            onChange={(e) =>
-              setFormData({ ...formData, email: e.target.value })
-            }
-            className="border p-2 w-full"
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl>
+                  <Input type="email" placeholder="Digite o email" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-          {errors.email && (
-            <p className="text-red-500 text-sm">{errors.email}</p>
-          )}
-        </div>
-        <div>
-          <textarea
-            placeholder="Biografia"
-            value={formData.bio}
-            onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-            className="border p-2 w-full"
+          <FormField
+            control={form.control}
+            name="bio"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Biografia</FormLabel>
+                <FormControl>
+                  <Input placeholder="Digite a biografia" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-          {errors.bio && <p className="text-red-500 text-sm">{errors.bio}</p>}
-        </div>
-        <div>
-          <input
-            type="url"
-            placeholder="URL do portfólio"
-            value={formData.portfolioUrl}
-            onChange={(e) =>
-              setFormData({ ...formData, portfolioUrl: e.target.value })
-            }
-            className="border p-2 w-full"
+          <FormField
+            control={form.control}
+            name="portfolioUrl"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>URL do Portfólio</FormLabel>
+                <FormControl>
+                  <Input type="url" placeholder="Digite a URL" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-          {errors.portfolioUrl && (
-            <p className="text-red-500 text-sm">{errors.portfolioUrl}</p>
-          )}
-        </div>
-        <button type="submit" className="bg-blue-500 text-white p-2 rounded">
-          Cadastrar
-        </button>
-      </form>
+          <Button
+            type="submit"
+            className="w-full bg-primary-500 hover:bg-primary-600"
+          >
+            Cadastrar
+          </Button>
+        </form>
+      </Form>
     </div>
   );
 }
