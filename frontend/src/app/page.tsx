@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/useAuth";
+import Loading from "@/components/ui/loading";
 
 export default function Home() {
-  interface User {
-    name: string;
-    role: string;
-  }
+  const { user, isAuthLoading } = useAuth() as {
+    user: { name: string; role: string } | null;
+    isAuthLoading: boolean;
+  }; // Usamos o objeto retornado por useAuth
 
-  const user = useAuth() as User | null;
+  if (isAuthLoading) return <Loading />; // Mostra um componente de carregamento enquanto a autenticação está sendo verificada
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-100">
@@ -31,23 +32,23 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row justify-center gap-4">
               {["admin", "secretary"].includes(user.role) && (
                 <>
-                  <Link href="/artists/new">
-                    <Button className="w-full sm:w-auto">
+                  <Button asChild variant="default">
+                    <Link href="/artists/new" className="w-full sm:w-auto">
                       Cadastrar Artista
-                    </Button>
-                  </Link>
-                  <Link href="/events/new">
-                    <Button className="w-full sm:w-auto">
+                    </Link>
+                  </Button>
+                  <Button asChild variant="default">
+                    <Link href="/events/new" className="w-full sm:w-auto">
                       Cadastrar Evento
-                    </Button>
-                  </Link>
+                    </Link>
+                  </Button>
                 </>
               )}
-              <Link href="/search">
-                <Button className="w-full sm:w-auto">
+              <Button asChild variant="default">
+                <Link href="/search" className="w-full sm:w-auto">
                   Consultar Artistas e Eventos
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </div>
           </div>
         ) : (
@@ -56,14 +57,16 @@ export default function Home() {
               Por favor, faça login ou registre-se para acessar o sistema.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Link href="/login">
-                <Button className="w-full sm:w-auto">Login</Button>
-              </Link>
-              <Link href="/register">
-                <Button variant="outline" className="w-full sm:w-auto">
+              <Button asChild variant="default">
+                <Link href="/login" className="w-full sm:w-auto">
+                  Login
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/register" className="w-full sm:w-auto">
                   Registrar
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </div>
           </div>
         )}

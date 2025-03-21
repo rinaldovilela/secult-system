@@ -41,15 +41,20 @@ type UserForm = z.infer<typeof userSchema>;
 export default function NewUser() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const user = useAuth() as { role: string } | null;
+  const { user, isAuthLoading } = useAuth() as {
+    user: { role: string } | null;
+    isAuthLoading: boolean;
+  }; // Define explicit type for user
 
   useEffect(() => {
+    if (isAuthLoading) return; // Espera a autenticação carregar
+
     if (user === null || user.role !== "admin") {
       router.push("/login");
       return;
     }
     setIsLoading(false);
-  }, [user, router]);
+  }, [user, isAuthLoading, router]);
 
   const form = useForm<UserForm>({
     resolver: zodResolver(userSchema),
@@ -82,7 +87,7 @@ export default function NewUser() {
     }
   };
 
-  if (isLoading) return <Loading />;
+  if (isAuthLoading || isLoading) return <Loading />;
   if (!user || user.role !== "admin") return null;
 
   return (

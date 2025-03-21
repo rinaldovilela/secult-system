@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -18,15 +18,13 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import Loading from "@/components/ui/loading";
 
 const eventSchema = z.object({
   title: z.string().min(1, "Título é obrigatório"),
+  description: z.string().optional(),
   date: z.string().min(1, "Data é obrigatória"),
   location: z.string().min(1, "Local é obrigatório"),
-  target_audience: z.string().optional(),
-  artist_ids: z.array(z.number()).optional(),
 });
 
 type EventForm = z.infer<typeof eventSchema>;
@@ -34,46 +32,28 @@ type EventForm = z.infer<typeof eventSchema>;
 export default function NewEvent() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const [artists, setArtists] = useState([]);
-  const user = useAuth();
+  const { user, isAuthLoading } = useAuth() as {
+    user: { role: string } | null;
+    isAuthLoading: boolean;
+  };
 
   useEffect(() => {
-    if (user === null) {
+    if (isAuthLoading) return;
+
+    if (user === null || !["admin", "secretary"].includes(user?.role)) {
       router.push("/login");
       return;
     }
-
-    if (!["admin", "secretary"].includes(user.role)) {
-      router.push("/login");
-      return;
-    }
-
-    const fetchArtists = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const response = await axios.get("http://localhost:5000/api/artists", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setArtists(response.data);
-      } catch (error) {
-        console.error("Erro ao carregar artistas:", error);
-        toast.error("Erro ao carregar artistas");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchArtists();
-  }, [user, router]);
+    setIsLoading(false);
+  }, [user, isAuthLoading, router]);
 
   const form = useForm<EventForm>({
     resolver: zodResolver(eventSchema),
     defaultValues: {
       title: "",
+      description: "",
       date: "",
       location: "",
-      target_audience: "",
-      artist_ids: [],
     },
   });
 
@@ -100,7 +80,7 @@ export default function NewEvent() {
     }
   };
 
-  if (isLoading) return <Loading />;
+  if (isAuthLoading || isLoading) return <Loading />;
   if (!user || !["admin", "secretary"].includes(user.role)) return null;
 
   return (
@@ -125,12 +105,25 @@ export default function NewEvent() {
           />
           <FormField
             control={form.control}
+            name="description"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Descrição</FormLabel>
+                <FormControl>
+                  <Input placeholder="Digite a descrição" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
             name="date"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Data e Hora</FormLabel>
+                <FormLabel>Data</FormLabel>
                 <FormControl>
-                  <Input type="datetime-local" {...field} />
+                  <Input type="date" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -145,52 +138,6 @@ export default function NewEvent() {
                 <FormControl>
                   <Input placeholder="Digite o local" {...field} />
                 </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="target_audience"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Público-Alvo</FormLabel>
-                <FormControl>
-                  <Input placeholder="Digite o público-alvo" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="artist_ids"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Artistas Participantes</FormLabel>
-                <div className="space-y-2">
-                  {artists.map((artist: any) => (
-                    <div
-                      key={artist.id}
-                      className="flex items-center space-x-2"
-                    >
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value?.includes(artist.id)}
-                          onCheckedChange={(checked) => {
-                            const newValue = checked
-                              ? [...(field.value || []), artist.id]
-                              : (field.value || []).filter(
-                                  (id: number) => id !== artist.id
-                                );
-                            field.onChange(newValue);
-                          }}
-                        />
-                      </FormControl>
-                      <FormLabel className="text-sm">{artist.name}</FormLabel>
-                    </div>
-                  ))}
-                </div>
                 <FormMessage />
               </FormItem>
             )}

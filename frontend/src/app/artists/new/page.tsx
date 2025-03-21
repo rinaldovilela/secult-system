@@ -32,15 +32,20 @@ type ArtistForm = z.infer<typeof artistSchema>;
 export default function NewArtist() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const user = useAuth() as { role: string } | null;
+  const { user, isAuthLoading } = useAuth() as {
+    user: { role: string } | null;
+    isAuthLoading: boolean;
+  }; // Define explicit type for user
 
   useEffect(() => {
+    if (isAuthLoading) return; // Espera a autenticação carregar
+
     if (user === null || !["admin", "secretary"].includes(user?.role)) {
       router.push("/login");
       return;
     }
     setIsLoading(false);
-  }, [user, router]);
+  }, [user, isAuthLoading, router]);
 
   const form = useForm<ArtistForm>({
     resolver: zodResolver(artistSchema),
@@ -75,7 +80,7 @@ export default function NewArtist() {
     }
   };
 
-  if (isLoading) return <Loading />;
+  if (isAuthLoading || isLoading) return <Loading />;
   if (!user || !["admin", "secretary"].includes(user.role)) return null;
 
   return (

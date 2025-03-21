@@ -1,10 +1,12 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/useAuth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import axios from "axios";
-import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import {
   Form,
@@ -16,6 +18,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import Loading from "@/components/ui/loading";
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -26,6 +29,17 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function Login() {
   const router = useRouter();
+  const { user, isAuthLoading } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isAuthLoading) return;
+
+    if (user) {
+      router.push("/");
+    }
+  }, [user, isAuthLoading, router]);
+
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -35,6 +49,7 @@ export default function Login() {
   });
 
   const onSubmit = async (data: LoginForm) => {
+    setIsSubmitting(true);
     try {
       const response = await axios.post(
         "http://localhost:5000/api/login",
@@ -42,9 +57,7 @@ export default function Login() {
       );
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
-      // Dispara um evento de storage para atualizar o header
       window.dispatchEvent(new Event("storage"));
-      toast.success("Login bem-sucedido!");
       router.push("/");
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -54,8 +67,13 @@ export default function Login() {
       } else {
         toast.error(`Erro ao fazer login: ${String(error)}`);
       }
+    } finally {
+      setIsSubmitting(false);
     }
   };
+
+  if (isAuthLoading) return <Loading />;
+  if (user) return null;
 
   return (
     <div className="p-8">
@@ -96,8 +114,8 @@ export default function Login() {
               </FormItem>
             )}
           />
-          <Button type="submit" className="w-full">
-            Entrar
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting ? "Entrando..." : "Entrar"}
           </Button>
         </form>
       </Form>

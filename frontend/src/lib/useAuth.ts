@@ -3,19 +3,23 @@ import { getUser } from "./auth";
 
 export const useAuth = () => {
   const [user, setUser] = useState(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true); // Novo estado para indicar carregamento
 
   useEffect(() => {
     // Garante que a lógica só seja executada no lado do cliente
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") {
+      setIsAuthLoading(false); // No servidor, não há carregamento
+      return;
+    }
 
     // Define o estado inicial do usuário
     const initialUser = getUser();
     setUser(initialUser);
+    setIsAuthLoading(false); // Autenticação inicial concluída
 
     const handleStorageChange = () => {
       const updatedUser = getUser();
       setUser((prevUser) => {
-        // Só atualiza o estado se o usuário realmente mudou
         if (JSON.stringify(updatedUser) !== JSON.stringify(prevUser)) {
           return updatedUser;
         }
@@ -30,7 +34,6 @@ export const useAuth = () => {
     const interval = setInterval(() => {
       const updatedUser = getUser();
       setUser((prevUser) => {
-        // Só atualiza o estado se o usuário realmente mudou
         if (JSON.stringify(updatedUser) !== JSON.stringify(prevUser)) {
           return updatedUser;
         }
@@ -42,7 +45,7 @@ export const useAuth = () => {
       window.removeEventListener("storage", handleStorageChange);
       clearInterval(interval);
     };
-  }, []); // Removemos `user` da lista de dependências
+  }, []);
 
-  return user;
+  return { user, isAuthLoading }; // Retorna tanto o user quanto o estado de carregamento
 };

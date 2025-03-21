@@ -7,7 +7,10 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 
 export default function Header() {
-  const user = useAuth() as { name: string; role: string } | null;
+  const { user, isAuthLoading } = useAuth() as {
+    user: { name: string; role: string } | null;
+    isAuthLoading: boolean;
+  }; // Agora usamos o objeto retornado por useAuth
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -22,6 +25,8 @@ export default function Header() {
       setIsLoggingOut(false);
     }
   };
+
+  if (isAuthLoading) return null; // Não renderiza o Header enquanto a autenticação está carregando
 
   return (
     <header className="bg-neutral-900 text-white p-4">
