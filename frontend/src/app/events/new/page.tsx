@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import axios from "axios";
+import toast from "react-hot-toast";
 import {
   Form,
   FormControl,
@@ -18,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import Loading from "@/components/ui/loading";
 
 const eventSchema = z.object({
   title: z.string().min(1, "Título é obrigatório"),
@@ -31,13 +33,17 @@ type EventForm = z.infer<typeof eventSchema>;
 
 export default function NewEvent() {
   const router = useRouter();
-  const user = getUser();
+  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    if (!user || !["admin", "secretary"].includes(user.role)) {
+    const storedUser = getUser();
+    setUser(storedUser);
+    if (!storedUser || !["admin", "secretary"].includes(storedUser?.role)) {
       router.push("/login");
     }
-  }, [user, router]);
+    setIsLoading(false);
+  }, [router]);
 
   const [artists, setArtists] = useState([]);
 
@@ -51,6 +57,7 @@ export default function NewEvent() {
         setArtists(response.data);
       } catch (error) {
         console.error("Erro ao carregar artistas:", error);
+        toast.error("Erro ao carregar artistas");
       }
     };
     if (user) fetchArtists();
@@ -75,26 +82,22 @@ export default function NewEvent() {
         data,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert(`Evento cadastrado! ID: ${response.data.id}`);
+      toast.success(`Evento cadastrado! ID: ${response.data.id}`);
       form.reset();
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        console.error(
-          "Erro na requisição:",
-          error.response?.data || error.message
-        );
-        alert(
+        toast.error(
           `Erro ao cadastrar evento: ${
             error.response?.data?.error || error.message
           }`
         );
       } else {
-        console.error("Erro desconhecido:", error);
-        alert(`Erro ao cadastrar evento: ${String(error)}`);
+        toast.error(`Erro ao cadastrar evento: ${String(error)}`);
       }
     }
   };
 
+  if (isLoading) return <Loading />;
   if (!user) return null;
 
   return (

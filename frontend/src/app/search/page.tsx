@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getUser } from "@/lib/auth";
 import axios from "axios";
+import toast from "react-hot-toast";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,16 +15,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import Loading from "@/components/ui/loading";
 
 export default function Search() {
   const router = useRouter();
-  const user = getUser();
+  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    if (!user) {
+    const storedUser = getUser();
+    setUser(storedUser);
+    if (!storedUser) {
       router.push("/login");
     }
-  }, [user, router]);
+    setIsLoading(false);
+  }, [router]);
 
   const [artists, setArtists] = useState([]);
   const [events, setEvents] = useState([]);
@@ -51,6 +57,7 @@ export default function Search() {
         setEvents(eventsResponse.data);
       } catch (error) {
         console.error("Erro ao carregar dados:", error);
+        toast.error("Erro ao carregar dados");
       }
     };
     if (user) fetchData();
@@ -64,6 +71,7 @@ export default function Search() {
     event.title.toLowerCase().includes(eventFilter.toLowerCase())
   );
 
+  if (isLoading) return <Loading />;
   if (!user) return null;
 
   return (

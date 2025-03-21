@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getUser } from "@/lib/auth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import axios from "axios";
+import toast from "react-hot-toast";
 import {
   Form,
   FormControl,
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import Loading from "@/components/ui/loading";
 
 const artistSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório"),
@@ -29,13 +31,17 @@ type ArtistForm = z.infer<typeof artistSchema>;
 
 export default function NewArtist() {
   const router = useRouter();
-  const user = getUser();
+  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    if (!user || !["admin", "secretary"].includes(user.role)) {
+    const storedUser = getUser();
+    setUser(storedUser);
+    if (!storedUser || !["admin", "secretary"].includes(storedUser?.role)) {
       router.push("/login");
     }
-  }, [user, router]);
+    setIsLoading(false);
+  }, [router]);
 
   const form = useForm<ArtistForm>({
     resolver: zodResolver(artistSchema),
@@ -55,26 +61,22 @@ export default function NewArtist() {
         data,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert(`Artista cadastrado! ID: ${response.data.id}`);
+      toast.success(`Artista cadastrado! ID: ${response.data.id}`);
       form.reset();
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        console.error(
-          "Erro na requisição:",
-          error.response?.data || error.message
-        );
-        alert(
+        toast.error(
           `Erro ao cadastrar artista: ${
             error.response?.data?.error || error.message
           }`
         );
       } else {
-        console.error("Erro desconhecido:", error);
-        alert(`Erro ao cadastrar artista: ${String(error)}`);
+        toast.error(`Erro ao cadastrar artista: ${String(error)}`);
       }
     }
   };
 
+  if (isLoading) return <Loading />;
   if (!user) return null;
 
   return (

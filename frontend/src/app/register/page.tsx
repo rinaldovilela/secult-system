@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import axios from "axios";
+import toast from "react-hot-toast";
 import {
   Form,
   FormControl,
@@ -50,15 +51,15 @@ export default function Register() {
         "http://localhost:5000/api/register",
         data
       );
-      alert(`Usuário registrado! ID: ${response.data.id}`);
+      toast.success(`Usuário registrado! ID: ${response.data.id}`);
       form.reset();
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        alert(
+        toast.error(
           `Erro ao registrar: ${error.response?.data?.error || error.message}`
         );
       } else {
-        alert(`Erro ao registrar: ${String(error)}`);
+        toast.error(`Erro ao registrar: ${String(error)}`);
       }
     }
   };

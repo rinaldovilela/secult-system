@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import axios from "axios";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import {
   Form,
   FormControl,
@@ -41,15 +42,15 @@ export default function Login() {
       );
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
-      alert("Login bem-sucedido!");
-      router.push("/"); // Redireciona para a página inicial
+      toast.success("Login bem-sucedido!");
+      router.push("/");
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        alert(
+        toast.error(
           `Erro ao fazer login: ${error.response?.data?.error || error.message}`
         );
       } else {
-        alert(`Erro ao fazer login: ${String(error)}`);
+        toast.error(`Erro ao fazer login: ${String(error)}`);
       }
     }
   };
