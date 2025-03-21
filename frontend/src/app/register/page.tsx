@@ -47,9 +47,11 @@ export default function Register() {
 
   const onSubmit = async (data: RegisterForm) => {
     try {
+      const token = localStorage.getItem("token");
       const response = await axios.post(
         "http://localhost:5000/api/register",
-        data
+        data,
+        token ? { headers: { Authorization: `Bearer ${token}` } } : {}
       );
       toast.success(`Usuário registrado! ID: ${response.data.id}`);
       form.reset();

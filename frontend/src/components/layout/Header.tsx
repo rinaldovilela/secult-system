@@ -3,28 +3,15 @@
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useAuth } from "@/lib/useAuth";
 
 export default function Header() {
-  interface User {
-    name: string;
-    role: string;
-  }
-
-  const [user, setUser] = useState<User | null>(null);
+  const user = useAuth();
   const router = useRouter();
-
-  useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-    setUser(null);
     router.push("/login");
   };
 
@@ -40,6 +27,11 @@ export default function Header() {
               <span className="mr-4">
                 Bem-vindo, {user.name} ({user.role})
               </span>
+              {user.role === "admin" && (
+                <Link href="/users/new" className="mr-4">
+                  <Button variant="outline">Cadastrar Usuário</Button>
+                </Link>
+              )}
               <Button variant="outline" onClick={handleLogout}>
                 Sair
               </Button>

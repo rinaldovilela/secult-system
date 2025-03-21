@@ -42,6 +42,8 @@ export default function Login() {
       );
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
+      // Dispara um evento de storage para atualizar o header
+      window.dispatchEvent(new Event("storage"));
       toast.success("Login bem-sucedido!");
       router.push("/");
     } catch (error) {
