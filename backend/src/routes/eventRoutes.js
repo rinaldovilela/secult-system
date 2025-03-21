@@ -4,8 +4,8 @@ const { authenticateToken, authorizeRole } = require("../middleware/auth");
 
 const router = express.Router();
 
-// POST - Cadastro de eventos (apenas admin e secretary podem cadastrar)
-router.post("/events", authenticateToken, async (req, res) => {
+// POST /api/events - Cadastro de eventos (apenas admin e secretary podem cadastrar)
+router.post("/", authenticateToken, async (req, res) => {
   try {
     const { title, description, date, location, target_audience, artists } =
       req.body;
@@ -60,8 +60,8 @@ router.post("/events", authenticateToken, async (req, res) => {
   }
 });
 
-// GET - Listar todos os eventos (qualquer usuário autenticado pode ver)
-router.get("/events", authenticateToken, async (req, res) => {
+// GET /api/events - Listar todos os eventos (qualquer usuário autenticado pode ver)
+router.get("/", authenticateToken, async (req, res) => {
   try {
     // Buscar todos os eventos
     const [events] = await db.query(`
@@ -103,7 +103,8 @@ router.get("/events", authenticateToken, async (req, res) => {
   }
 });
 
-router.get("/events/:id", authenticateToken, async (req, res) => {
+// GET /api/events/:id
+router.get("/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -148,7 +149,7 @@ router.get("/events/:id", authenticateToken, async (req, res) => {
 });
 
 // PUT /api/events/:id
-router.put("/events/:id", authenticateToken, async (req, res) => {
+router.put("/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, date, location, target_audience } = req.body;
@@ -196,7 +197,7 @@ router.put("/events/:id", authenticateToken, async (req, res) => {
 });
 
 // POST /api/events/:id/artists - Adicionar um artista a um evento
-router.post("/events/:id/artists", authenticateToken, async (req, res) => {
+router.post("/:id/artists", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { artist_id, amount } = req.body;
@@ -253,107 +254,93 @@ router.post("/events/:id/artists", authenticateToken, async (req, res) => {
 });
 
 // DELETE /api/events/:id/artists/:artistId - Remover um artista de um evento
-router.delete(
-  "/events/:id/artists/:artistId",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { id, artistId } = req.params;
+router.delete("/:id/artists/:artistId", authenticateToken, async (req, res) => {
+  try {
+    const { id, artistId } = req.params;
 
-      // Verificar se o usuário é admin ou secretary
-      if (!["admin", "secretary"].includes(req.user.role)) {
-        return res.status(403).json({ error: "Acesso negado" });
-      }
-
-      // Verificar se o evento existe
-      const [events] = await db.query("SELECT * FROM events WHERE id = ?", [
-        id,
-      ]);
-      if (events.length === 0) {
-        return res.status(404).json({ error: "Evento não encontrado" });
-      }
-
-      // Verificar se o artista está associado ao evento
-      const [existing] = await db.query(
-        "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
-        [id, artistId]
-      );
-      if (existing.length === 0) {
-        return res
-          .status(404)
-          .json({ error: "Artista não encontrado no evento" });
-      }
-
-      // Remover o artista do evento
-      await db.query(
-        "DELETE FROM event_artists WHERE event_id = ? AND user_id = ?",
-        [id, artistId]
-      );
-
-      res
-        .status(200)
-        .json({ message: "Artista removido do evento com sucesso" });
-    } catch (error) {
-      console.error("Erro ao remover artista do evento:", error);
-      res.status(500).json({ error: "Erro ao remover artista do evento" });
+    // Verificar se o usuário é admin ou secretary
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
     }
+
+    // Verificar se o evento existe
+    const [events] = await db.query("SELECT * FROM events WHERE id = ?", [id]);
+    if (events.length === 0) {
+      return res.status(404).json({ error: "Evento não encontrado" });
+    }
+
+    // Verificar se o artista está associado ao evento
+    const [existing] = await db.query(
+      "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
+      [id, artistId]
+    );
+    if (existing.length === 0) {
+      return res
+        .status(404)
+        .json({ error: "Artista não encontrado no evento" });
+    }
+
+    // Remover o artista do evento
+    await db.query(
+      "DELETE FROM event_artists WHERE event_id = ? AND user_id = ?",
+      [id, artistId]
+    );
+
+    res.status(200).json({ message: "Artista removido do evento com sucesso" });
+  } catch (error) {
+    console.error("Erro ao remover artista do evento:", error);
+    res.status(500).json({ error: "Erro ao remover artista do evento" });
   }
-);
+});
 
 // PATCH /api/events/:id/artists/:artistId - Atualizar o status de pagamento de um artista
-router.patch(
-  "/events/:id/artists/:artistId",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { id, artistId } = req.params;
-      const { is_paid } = req.body;
+router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
+  try {
+    const { id, artistId } = req.params;
+    const { is_paid } = req.body;
 
-      // Validar os dados
-      if (typeof is_paid !== "boolean") {
-        return res
-          .status(400)
-          .json({ error: "O campo is_paid deve ser um booleano" });
-      }
-
-      // Verificar se o usuário é admin ou secretary
-      if (!["admin", "secretary"].includes(req.user.role)) {
-        return res.status(403).json({ error: "Acesso negado" });
-      }
-
-      // Verificar se o evento existe
-      const [events] = await db.query("SELECT * FROM events WHERE id = ?", [
-        id,
-      ]);
-      if (events.length === 0) {
-        return res.status(404).json({ error: "Evento não encontrado" });
-      }
-
-      // Verificar se o artista está associado ao evento
-      const [existing] = await db.query(
-        "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
-        [id, artistId]
-      );
-      if (existing.length === 0) {
-        return res
-          .status(404)
-          .json({ error: "Artista não encontrado no evento" });
-      }
-
-      // Atualizar o status de pagamento
-      await db.query(
-        "UPDATE event_artists SET is_paid = ? WHERE event_id = ? AND user_id = ?",
-        [is_paid, id, artistId]
-      );
-
-      res
-        .status(200)
-        .json({ message: "Status de pagamento atualizado com sucesso" });
-    } catch (error) {
-      console.error("Erro ao atualizar status de pagamento:", error);
-      res.status(500).json({ error: "Erro ao atualizar status de pagamento" });
+    // Validar os dados
+    if (typeof is_paid !== "boolean") {
+      return res
+        .status(400)
+        .json({ error: "O campo is_paid deve ser um booleano" });
     }
+
+    // Verificar se o usuário é admin ou secretary
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    // Verificar se o evento existe
+    const [events] = await db.query("SELECT * FROM events WHERE id = ?", [id]);
+    if (events.length === 0) {
+      return res.status(404).json({ error: "Evento não encontrado" });
+    }
+
+    // Verificar se o artista está associado ao evento
+    const [existing] = await db.query(
+      "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
+      [id, artistId]
+    );
+    if (existing.length === 0) {
+      return res
+        .status(404)
+        .json({ error: "Artista não encontrado no evento" });
+    }
+
+    // Atualizar o status de pagamento
+    await db.query(
+      "UPDATE event_artists SET is_paid = ? WHERE event_id = ? AND user_id = ?",
+      [is_paid, id, artistId]
+    );
+
+    res
+      .status(200)
+      .json({ message: "Status de pagamento atualizado com sucesso" });
+  } catch (error) {
+    console.error("Erro ao atualizar status de pagamento:", error);
+    res.status(500).json({ error: "Erro ao atualizar status de pagamento" });
   }
-);
+});
 
 module.exports = router;

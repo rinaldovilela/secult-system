@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import Loading from "@/components/ui/loading";
+import { getToken } from "@/lib/auth"; // Importar getToken
 
 export default function EditProfile() {
   const router = useRouter();
@@ -32,30 +33,52 @@ export default function EditProfile() {
     setIsLoading(true);
 
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
+      if (!token) {
+        console.error("Token não encontrado no localStorage");
+        toast.error("Sessão expirada. Faça login novamente.");
+        router.push("/login");
+        return;
+      }
+
+      console.log("Token enviado na requisição:", token); // Log para depuração
+
       const formData = new FormData();
       formData.append("name", name);
       formData.append("bio", bio);
       formData.append("area_of_expertise", areaOfExpertise);
       if (profilePicture) formData.append("profile_picture", profilePicture);
 
-      await axios.put("http://localhost:5000/api/users/me", formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
-        },
-      });
+      const response = await axios.put(
+        "http://localhost:5000/api/users/me",
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
 
+      console.log("Resposta do endpoint PUT /api/users/me:", response.data); // Log para depuração
       toast.success("Perfil atualizado com sucesso!");
       router.push("/profile");
     } catch (error) {
       if (axios.isAxiosError(error)) {
+        console.error(
+          "Erro na requisição para PUT /api/users/me:",
+          error.response?.data || error.message
+        ); // Log para depuração
         toast.error(
           `Erro ao atualizar perfil: ${
             error.response?.data?.error || error.message
           }`
         );
+        if (error.response?.status === 403 || error.response?.status === 401) {
+          router.push("/login");
+        }
       } else {
+        console.error("Erro desconhecido ao atualizar perfil:", error); // Log para depuração
         toast.error(`Erro ao atualizar perfil: ${String(error)}`);
       }
     } finally {
@@ -64,7 +87,7 @@ export default function EditProfile() {
   };
 
   if (isAuthLoading) return <Loading />;
-  if (!user || !["artist", "group"].includes(user.role)) {
+  if (!user) {
     router.push("/login");
     return null;
   }

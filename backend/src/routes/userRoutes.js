@@ -5,6 +5,12 @@ const { authenticateToken } = require("../middleware/auth");
 const bcrypt = require("bcrypt");
 const multer = require("multer");
 
+// Log para verificar se o arquivo de rotas está sendo acessado
+router.use((req, res, next) => {
+  console.log(`Recebida requisição: ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 // Configurar o multer para lidar com upload de arquivos
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -26,8 +32,91 @@ const handleMulterError = (err, req, res, next) => {
   next(err);
 };
 
+// GET /api/users/me - Buscar detalhes do usuário logado
+router.get("/me", authenticateToken, async (req, res) => {
+  try {
+    console.log("Executando GET /api/users/me para user ID:", req.user.id);
+    const [users] = await db.query(
+      `
+      SELECT id, name, email, role, bio, area_of_expertise, profile_picture
+      FROM users
+      WHERE id = ?
+    `,
+      [req.user.id]
+    );
+
+    console.log("Resultado da query:", users);
+
+    if (users.length === 0) {
+      console.log("Usuário não encontrado para ID:", req.user.id);
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    res.status(200).json(users[0]);
+  } catch (error) {
+    console.error("Erro ao buscar perfil do usuário:", error);
+    res.status(500).json({ error: "Erro ao buscar perfil do usuário" });
+  }
+});
+
+// PUT /api/users/me - Atualizar perfil do usuário logado
+router.put(
+  "/me",
+  authenticateToken,
+  upload.fields([{ name: "profile_picture", maxCount: 1 }]),
+  handleMulterError,
+  async (req, res) => {
+    try {
+      const { name, bio, area_of_expertise } = req.body;
+      const files = req.files;
+
+      const profilePicture = files?.profile_picture
+        ? files.profile_picture[0].buffer
+        : null;
+
+      await db.query(
+        `
+        UPDATE users
+        SET name = ?, bio = ?, area_of_expertise = ?, profile_picture = COALESCE(?, profile_picture)
+        WHERE id = ?
+      `,
+        [name, bio, area_of_expertise, profilePicture, req.user.id]
+      );
+
+      res.status(200).json({ message: "Perfil atualizado com sucesso" });
+    } catch (error) {
+      console.error("Erro ao atualizar perfil:", error);
+      res.status(500).json({ error: "Erro ao atualizar perfil" });
+    }
+  }
+);
+
+// GET /api/users/me/events - Listar eventos do usuário logado
+router.get("/me/events", authenticateToken, async (req, res) => {
+  try {
+    if (!["artist", "group"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    const [events] = await db.query(
+      `
+      SELECT e.id, e.title, e.date, ea.status
+      FROM events e
+      JOIN event_artists ea ON e.id = ea.event_id
+      WHERE ea.artist_id = ?
+    `,
+      [req.user.id]
+    );
+
+    res.status(200).json(events);
+  } catch (error) {
+    console.error("Erro ao listar eventos do usuário:", error);
+    res.status(500).json({ error: "Erro ao listar eventos do usuário" });
+  }
+});
+
 // GET /api/users/artists - Listar usuários com papel "artist"
-router.get("/users/artists", authenticateToken, async (req, res) => {
+router.get("/artists", authenticateToken, async (req, res) => {
   try {
     const [users] = await db.query(
       'SELECT id, name FROM users WHERE role = "artist"'
@@ -41,7 +130,7 @@ router.get("/users/artists", authenticateToken, async (req, res) => {
 
 // POST /api/users - Cadastrar um novo artista ou grupo cultural
 router.post(
-  "/users",
+  "/",
   authenticateToken,
   upload.fields([
     { name: "profile_picture", maxCount: 1 },
@@ -113,7 +202,7 @@ router.post(
 );
 
 // GET /api/users/:id - Buscar detalhes de um usuário
-router.get("/users/:id", authenticateToken, async (req, res) => {
+router.get("/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -138,66 +227,6 @@ router.get("/users/:id", authenticateToken, async (req, res) => {
   } catch (error) {
     console.error("Erro ao buscar usuário:", error);
     res.status(500).json({ error: "Erro ao buscar usuário" });
-  }
-});
-
-// PUT /api/users/me - Atualizar perfil do usuário logado
-router.put(
-  "/users/me",
-  authenticateToken,
-  upload.fields([{ name: "profile_picture", maxCount: 1 }]),
-  handleMulterError,
-  async (req, res) => {
-    try {
-      const { name, bio, area_of_expertise } = req.body;
-      const files = req.files;
-
-      if (!["artist", "group"].includes(req.user.role)) {
-        return res.status(403).json({ error: "Acesso negado" });
-      }
-
-      const profilePicture = files?.profile_picture
-        ? files.profile_picture[0].buffer
-        : null;
-
-      await db.query(
-        `
-        UPDATE users
-        SET name = ?, bio = ?, area_of_expertise = ?, profile_picture = COALESCE(?, profile_picture)
-        WHERE id = ?
-      `,
-        [name, bio, area_of_expertise, profilePicture, req.user.id]
-      );
-
-      res.status(200).json({ message: "Perfil atualizado com sucesso" });
-    } catch (error) {
-      console.error("Erro ao atualizar perfil:", error);
-      res.status(500).json({ error: "Erro ao atualizar perfil" });
-    }
-  }
-);
-
-// GET /api/users/me/events - Listar eventos do usuário logado
-router.get("/users/me/events", authenticateToken, async (req, res) => {
-  try {
-    if (!["artist", "group"].includes(req.user.role)) {
-      return res.status(403).json({ error: "Acesso negado" });
-    }
-
-    const [events] = await db.query(
-      `
-      SELECT e.id, e.title, e.date, ea.status
-      FROM events e
-      JOIN event_artists ea ON e.id = ea.event_id
-      WHERE ea.artist_id = ?
-    `,
-      [req.user.id]
-    );
-
-    res.status(200).json(events);
-  } catch (error) {
-    console.error("Erro ao listar eventos do usuário:", error);
-    res.status(500).json({ error: "Erro ao listar eventos do usuário" });
   }
 });
 

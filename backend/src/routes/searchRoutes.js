@@ -4,7 +4,7 @@ const db = require("../config/db");
 const { authenticateToken } = require("../middleware/auth");
 
 // GET /api/search - Buscar eventos e usuários
-router.get("/search", authenticateToken, async (req, res) => {
+router.get("/", authenticateToken, async (req, res) => {
   try {
     const { type, query } = req.query;
 

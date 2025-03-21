@@ -1,22 +1,45 @@
 const express = require("express");
 const cors = require("cors");
 const authRoutes = require("./routes/authRoutes");
-const artistRoutes = require("./routes/artistRoutes");
-const eventRoutes = require("./routes/eventRoutes");
 const userRoutes = require("./routes/userRoutes");
-const searchRoutes = require("./routes/searchRoutes"); // Adicione esta linha
+const db = require("./config/db");
 
 const app = express();
 
-app.use(cors());
+// Log para todas as requisições
+app.use((req, res, next) => {
+  console.log(`[Server] Recebida requisição: ${req.method} ${req.originalUrl}`);
+  next();
+});
+
+// Configuração do CORS
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+// Middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use("/api", authRoutes);
-app.use("/api", artistRoutes);
-app.use("/api", eventRoutes);
-app.use("/api", userRoutes);
-app.use("/api", searchRoutes); // Adicione esta linha
+// Rotas
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+
+// Middleware para tratar erros 404
+app.use((req, res, next) => {
+  console.log(`[Server] Rota não encontrada: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({ error: "Rota não encontrada" });
+});
+
+// Middleware para tratar erros gerais
+app.use((err, req, res, next) => {
+  console.error("Erro no servidor:", err);
+  res.status(500).json({ error: "Erro interno do servidor" });
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
