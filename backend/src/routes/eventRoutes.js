@@ -10,7 +10,7 @@ router.post(
   authenticateToken,
   authorizeRole(["admin", "secretary"]),
   async (req, res) => {
-    const { title, date, location, target_audience, artist_ids } = req.body;
+    const { title, date, location, target_audience, artists } = req.body;
 
     if (!title || !date || !location) {
       return res
@@ -29,13 +29,15 @@ router.post(
         );
         const eventId = eventResult.insertId;
 
-        if (artist_ids && Array.isArray(artist_ids) && artist_ids.length > 0) {
-          const artistValues = artist_ids.map((artistId) => [
+        if (artists && Array.isArray(artists) && artists.length > 0) {
+          const artistValues = artists.map((artist) => [
             eventId,
-            artistId,
+            artist.artist_id,
+            artist.amount || 0, // Quantia padrão como 0 se não fornecida
+            artist.is_paid ? 1 : 0, // Converte booleano para 1 ou 0
           ]);
           await connection.query(
-            "INSERT INTO event_artists (event_id, artist_id) VALUES ?",
+            "INSERT INTO event_artists (event_id, artist_id, amount, is_paid) VALUES ?",
             [artistValues]
           );
         }
@@ -61,13 +63,37 @@ router.post(
 router.get("/events", authenticateToken, async (req, res) => {
   try {
     const [events] = await db.query(`
-      SELECT e.*, GROUP_CONCAT(a.name) as artist_names
+      SELECT e.*, 
+             GROUP_CONCAT(
+               JSON_OBJECT(
+                 'artist_id', ea.artist_id,
+                 'artist_name', a.name,
+                 'amount', ea.amount,
+                 'is_paid', ea.is_paid
+               )
+             ) as artists
       FROM events e
       LEFT JOIN event_artists ea ON e.id = ea.event_id
       LEFT JOIN artists a ON ea.artist_id = a.id
       GROUP BY e.id
     `);
-    res.status(200).json(events);
+    // Parse do JSON para cada evento
+    const parsedEvents = events.map((event) => ({
+      ...event,
+      artists: event.artists
+        ? event.artists
+            .split(",")
+            .map((artist) => {
+              try {
+                return JSON.parse(artist);
+              } catch {
+                return null;
+              }
+            })
+            .filter(Boolean)
+        : [],
+    }));
+    res.status(200).json(parsedEvents);
   } catch (error) {
     console.error("Erro ao listar eventos:", error);
     res.status(500).json({ error: "Erro ao listar eventos" });

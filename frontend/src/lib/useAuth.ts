@@ -1,21 +1,21 @@
 import { useState, useEffect } from "react";
-import { getUser } from "./auth";
+import { getUser, User } from "./auth";
 
 export const useAuth = () => {
-  const [user, setUser] = useState(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true); // Novo estado para indicar carregamento
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
 
   useEffect(() => {
     // Garante que a lógica só seja executada no lado do cliente
     if (typeof window === "undefined") {
-      setIsAuthLoading(false); // No servidor, não há carregamento
+      setIsAuthLoading(false);
       return;
     }
 
     // Define o estado inicial do usuário
     const initialUser = getUser();
     setUser(initialUser);
-    setIsAuthLoading(false); // Autenticação inicial concluída
+    setIsAuthLoading(false);
 
     const handleStorageChange = () => {
       const updatedUser = getUser();
@@ -47,5 +47,5 @@ export const useAuth = () => {
     };
   }, []);
 
-  return { user, isAuthLoading }; // Retorna tanto o user quanto o estado de carregamento
+  return { user, isAuthLoading };
 };

@@ -7,7 +7,7 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import Loading from "@/components/ui/loading";
-import { saveAs } from "file-saver"; // Biblioteca para baixar arquivos
+import { saveAs } from "file-saver";
 
 interface Artist {
   id: number;
@@ -23,6 +23,12 @@ interface Event {
   description?: string;
   date: string;
   location: string;
+  artists: {
+    artist_id: number;
+    artist_name: string;
+    amount: number;
+    is_paid: boolean;
+  }[];
 }
 
 export default function Reports() {
@@ -92,14 +98,28 @@ export default function Reports() {
     ]);
 
     // Cabeçalhos do CSV para eventos
-    const eventHeaders = ["ID", "Título", "Descrição", "Data", "Local"];
-    const eventRows = events.map((event) => [
-      event.id,
-      event.title,
-      event.description || "",
-      new Date(event.date).toLocaleDateString(),
-      event.location,
-    ]);
+    const eventHeaders = [
+      "ID",
+      "Título",
+      "Descrição",
+      "Data",
+      "Local",
+      "Artista",
+      "Quantia (R$)",
+      "Pago",
+    ];
+    const eventRows = events.flatMap((event) =>
+      event.artists.map((artist) => [
+        event.id,
+        event.title,
+        event.description || "",
+        new Date(event.date).toLocaleDateString(),
+        event.location,
+        artist.artist_name,
+        artist.amount.toFixed(2),
+        artist.is_paid ? "Sim" : "Não",
+      ])
+    );
 
     // Combinar os dados em um único CSV
     const csvContent = [
@@ -194,6 +214,17 @@ export default function Reports() {
                       <strong>Descrição:</strong> {event.description}
                     </p>
                   )}
+                  <p>
+                    <strong>Artistas:</strong>
+                  </p>
+                  <ul className="ml-4 list-disc">
+                    {event.artists.map((artist) => (
+                      <li key={artist.artist_id}>
+                        {artist.artist_name} - R$ {artist.amount.toFixed(2)} -{" "}
+                        {artist.is_paid ? "Pago" : "Pendente"}
+                      </li>
+                    ))}
+                  </ul>
                 </li>
               ))}
             </ul>

@@ -10,7 +10,7 @@ export default function Header() {
   const { user, isAuthLoading } = useAuth() as {
     user: { name: string; role: string } | null;
     isAuthLoading: boolean;
-  }; // Agora usamos o objeto retornado por useAuth
+  };
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -26,7 +26,7 @@ export default function Header() {
     }
   };
 
-  if (isAuthLoading) return null; // Não renderiza o Header enquanto a autenticação está carregando
+  if (isAuthLoading) return null;
 
   return (
     <header className="bg-neutral-900 text-white p-4">
@@ -40,6 +40,9 @@ export default function Header() {
               <span className="text-sm sm:text-base text-neutral-200">
                 Bem-vindo, {user.name} ({user.role})
               </span>
+              <Button asChild variant="darkHeader" aria-label="Ver perfil">
+                <Link href="/profile">Meu Perfil</Link>
+              </Button>
               {user.role === "admin" && (
                 <Button
                   asChild

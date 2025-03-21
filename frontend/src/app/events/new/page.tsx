@@ -18,6 +18,14 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import Loading from "@/components/ui/loading";
 
 const eventSchema = z.object({
@@ -25,9 +33,21 @@ const eventSchema = z.object({
   description: z.string().optional(),
   date: z.string().min(1, "Data é obrigatória"),
   location: z.string().min(1, "Local é obrigatório"),
+  target_audience: z.string().optional(),
 });
 
 type EventForm = z.infer<typeof eventSchema>;
+
+interface Artist {
+  id: number;
+  name: string;
+}
+
+interface ArtistSelection {
+  artist_id: number;
+  amount: string;
+  is_paid: boolean;
+}
 
 export default function NewEvent() {
   const router = useRouter();
@@ -36,6 +56,8 @@ export default function NewEvent() {
     user: { role: string } | null;
     isAuthLoading: boolean;
   };
+  const [artists, setArtists] = useState<Artist[]>([]);
+  const [selectedArtists, setSelectedArtists] = useState<ArtistSelection[]>([]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -44,7 +66,22 @@ export default function NewEvent() {
       router.push("/login");
       return;
     }
-    setIsLoading(false);
+
+    const fetchArtists = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const response = await axios.get("http://localhost:5000/api/artists", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setArtists(response.data);
+      } catch (error) {
+        toast.error("Erro ao carregar artistas");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchArtists();
   }, [user, isAuthLoading, router]);
 
   const form = useForm<EventForm>({
@@ -54,19 +91,60 @@ export default function NewEvent() {
       description: "",
       date: "",
       location: "",
+      target_audience: "",
     },
   });
+
+  const handleAddArtist = (artistId: number) => {
+    if (!selectedArtists.some((artist) => artist.artist_id === artistId)) {
+      setSelectedArtists([
+        ...selectedArtists,
+        { artist_id: artistId, amount: "", is_paid: false },
+      ]);
+    }
+  };
+
+  const handleRemoveArtist = (artistId: number) => {
+    setSelectedArtists(
+      selectedArtists.filter((artist) => artist.artist_id !== artistId)
+    );
+  };
+
+  const handleAmountChange = (artistId: number, amount: string) => {
+    setSelectedArtists(
+      selectedArtists.map((artist) =>
+        artist.artist_id === artistId ? { ...artist, amount } : artist
+      )
+    );
+  };
+
+  const handlePaidChange = (artistId: number, is_paid: boolean) => {
+    setSelectedArtists(
+      selectedArtists.map((artist) =>
+        artist.artist_id === artistId ? { ...artist, is_paid } : artist
+      )
+    );
+  };
 
   const onSubmit = async (data: EventForm) => {
     try {
       const token = localStorage.getItem("token");
+      const eventData = {
+        ...data,
+        artists: selectedArtists.map((artist) => ({
+          artist_id: artist.artist_id,
+          amount: parseFloat(artist.amount) || 0,
+          is_paid: artist.is_paid,
+        })),
+      };
       const response = await axios.post(
         "http://localhost:5000/api/events",
-        data,
+        eventData,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       toast.success(`Evento cadastrado! ID: ${response.data.id}`);
       form.reset();
+      setSelectedArtists([]);
     } catch (error) {
       if (axios.isAxiosError(error)) {
         toast.error(
@@ -81,7 +159,7 @@ export default function NewEvent() {
   };
 
   if (isAuthLoading || isLoading) return <Loading />;
-  if (!user || !["admin", "secretary"].includes(user.role)) return null;
+  if (!user || !["admin", "secretary"].includes(user?.role)) return null;
 
   return (
     <div className="p-8">
@@ -123,7 +201,7 @@ export default function NewEvent() {
               <FormItem>
                 <FormLabel>Data</FormLabel>
                 <FormControl>
-                  <Input type="date" {...field} />
+                  <Input type="datetime-local" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -142,6 +220,78 @@ export default function NewEvent() {
               </FormItem>
             )}
           />
+          <FormField
+            control={form.control}
+            name="target_audience"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Público-Alvo</FormLabel>
+                <FormControl>
+                  <Input placeholder="Digite o público-alvo" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Artistas</h2>
+            <Select onValueChange={(value) => handleAddArtist(Number(value))}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um artista" />
+              </SelectTrigger>
+              <SelectContent>
+                {artists.map((artist) => (
+                  <SelectItem key={artist.id} value={String(artist.id)}>
+                    {artist.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedArtists.length > 0 && (
+              <div className="space-y-2">
+                {selectedArtists.map((selected) => {
+                  const artist = artists.find(
+                    (a) => a.id === selected.artist_id
+                  );
+                  return (
+                    <div
+                      key={selected.artist_id}
+                      className="flex items-center gap-4 p-2 border rounded-md"
+                    >
+                      <span className="flex-1">{artist?.name}</span>
+                      <Input
+                        type="number"
+                        placeholder="Quantia (R$)"
+                        value={selected.amount}
+                        onChange={(e) =>
+                          handleAmountChange(selected.artist_id, e.target.value)
+                        }
+                        className="w-32"
+                      />
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          checked={selected.is_paid}
+                          onCheckedChange={(checked) =>
+                            handlePaidChange(
+                              selected.artist_id,
+                              checked as boolean
+                            )
+                          }
+                        />
+                        <span>Já Pago</span>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        onClick={() => handleRemoveArtist(selected.artist_id)}
+                      >
+                        Remover
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           <Button type="submit" className="w-full">
             Cadastrar
           </Button>

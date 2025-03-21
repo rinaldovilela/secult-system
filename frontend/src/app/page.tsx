@@ -6,7 +6,10 @@ import { useAuth } from "@/lib/useAuth";
 import Loading from "@/components/ui/loading";
 
 export default function Home() {
-  const { user, isAuthLoading } = useAuth();
+  const { user, isAuthLoading } = useAuth() as {
+    user: { name: string; role: string } | null;
+    isAuthLoading: boolean;
+  };
 
   if (isAuthLoading) return <Loading />;
 
