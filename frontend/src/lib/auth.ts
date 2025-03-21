@@ -8,10 +8,19 @@ interface DecodedToken {
 }
 
 export const getToken = () => {
+  // Verifica se estamos no lado do cliente (onde window está definido)
+  if (typeof window === "undefined") {
+    return null;
+  }
   return localStorage.getItem("token");
 };
 
 export const getUser = () => {
+  // Verifica se estamos no lado do cliente
+  if (typeof window === "undefined") {
+    return null;
+  }
+
   const user = localStorage.getItem("user");
   const token = getToken();
 

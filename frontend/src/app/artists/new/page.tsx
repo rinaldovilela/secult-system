@@ -32,7 +32,7 @@ type ArtistForm = z.infer<typeof artistSchema>;
 export default function NewArtist() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const user = useAuth();
+  const user: { role: string } | null = useAuth();
 
   useEffect(() => {
     if (user === null || !["admin", "secretary"].includes(user?.role)) {

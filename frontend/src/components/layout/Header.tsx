@@ -6,12 +6,13 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 
 export default function Header() {
-  const user = useAuth();
+  const user = useAuth() as { name: string; role: string } | null;
   const router = useRouter();
 
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    window.dispatchEvent(new Event("storage")); // Dispara evento para atualizar o useAuth
     router.push("/login");
   };
 

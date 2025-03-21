@@ -41,7 +41,7 @@ type UserForm = z.infer<typeof userSchema>;
 export default function NewUser() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const user = useAuth();
+  const user = useAuth() as { role: string } | null;
 
   useEffect(() => {
     if (user === null || user.role !== "admin") {
