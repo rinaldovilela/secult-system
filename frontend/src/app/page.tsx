@@ -15,7 +15,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-100">
-      <div className="text-center p-8 max-w-lg">
+      <div className="text-center p-8 max-w-lg bg-white rounded-lg shadow-md">
         <h1 className="text-4xl font-bold mb-4 text-neutral-900">
           Bem-vindo ao Secult System
         </h1>
