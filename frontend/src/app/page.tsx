@@ -10,7 +10,7 @@ export default function Home() {
     role: string;
   }
 
-  const user = useAuth();
+  const user = useAuth() as User | null;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-100">

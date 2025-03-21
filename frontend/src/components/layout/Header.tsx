@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -8,45 +9,62 @@ import { useAuth } from "@/lib/useAuth";
 export default function Header() {
   const user = useAuth() as { name: string; role: string } | null;
   const router = useRouter();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogout = () => {
+    setIsLoggingOut(true);
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-    window.dispatchEvent(new Event("storage")); // Dispara evento para atualizar o useAuth
-    router.push("/login");
+    window.dispatchEvent(new Event("storage"));
+    try {
+      router.push("/login");
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   return (
     <header className="bg-neutral-900 text-white p-4">
-      <div className="container mx-auto flex justify-between items-center">
+      <div className="container mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
         <Link href="/">
           <h2 className="text-xl font-bold">Secult System</h2>
         </Link>
-        <div>
+        <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
           {user ? (
             <>
-              <span className="mr-4">
+              <span className="text-sm sm:text-base text-neutral-200">
                 Bem-vindo, {user.name} ({user.role})
               </span>
               {user.role === "admin" && (
-                <Link href="/users/new" className="mr-4">
-                  <Button variant="outline">Cadastrar Usuário</Button>
-                </Link>
+                <Button
+                  asChild
+                  variant="darkHeader"
+                  aria-label="Cadastrar novo usuário"
+                >
+                  <Link href="/users/new">Cadastrar Usuário</Link>
+                </Button>
               )}
-              <Button variant="outline" onClick={handleLogout}>
-                Sair
+              <Button
+                variant="darkHeader"
+                onClick={handleLogout}
+                disabled={isLoggingOut}
+                aria-label="Sair do sistema"
+              >
+                {isLoggingOut ? "Saindo..." : "Sair"}
               </Button>
             </>
           ) : (
             <>
-              <Link href="/login">
-                <Button variant="outline" className="mr-2">
-                  Login
-                </Button>
-              </Link>
-              <Link href="/register">
-                <Button>Registrar</Button>
-              </Link>
+              <Button asChild variant="darkHeader" aria-label="Fazer login">
+                <Link href="/login">Login</Link>
+              </Button>
+              <Button
+                asChild
+                variant="darkHeader"
+                aria-label="Registrar-se no sistema"
+              >
+                <Link href="/register">Registrar</Link>
+              </Button>
             </>
           )}
         </div>
