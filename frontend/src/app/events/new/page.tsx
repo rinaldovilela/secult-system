@@ -3,21 +3,10 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import axios from "axios";
 import toast from "react-hot-toast";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -25,36 +14,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import Loading from "@/components/ui/loading";
-
-const eventSchema = z.object({
-  title: z.string().min(1, "Título é obrigatório"),
-  description: z.string().optional(),
-  date: z.string().min(1, "Data é obrigatória"),
-  location: z.string().min(1, "Local é obrigatório"),
-  target_audience: z.string().optional(),
-});
-
-type EventForm = z.infer<typeof eventSchema>;
 
 interface Artist {
   id: number;
   name: string;
 }
 
-interface ArtistSelection {
+interface EventArtist {
   artist_id: number;
-  amount: string;
-  is_paid: boolean;
+  artist_name: string;
+  amount: number;
 }
 
 export default function NewEvent() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
   const { user, isAuthLoading } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [date, setDate] = useState("");
+  const [location, setLocation] = useState("");
+  const [targetAudience, setTargetAudience] = useState("");
   const [artists, setArtists] = useState<Artist[]>([]);
-  const [selectedArtists, setSelectedArtists] = useState<ArtistSelection[]>([]);
+  const [selectedArtistId, setSelectedArtistId] = useState("");
+  const [artistAmount, setArtistAmount] = useState("");
+  const [eventArtists, setEventArtists] = useState<EventArtist[]>([]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -75,7 +60,15 @@ export default function NewEvent() {
         );
         setArtists(response.data);
       } catch (error) {
-        toast.error("Erro ao carregar usuários artistas");
+        if (axios.isAxiosError(error)) {
+          toast.error(
+            `Erro ao buscar artistas: ${
+              error.response?.data?.error || error.message
+            }`
+          );
+        } else {
+          toast.error(`Erro ao buscar artistas: ${String(error)}`);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -84,76 +77,76 @@ export default function NewEvent() {
     fetchArtists();
   }, [user, isAuthLoading, router]);
 
-  const form = useForm<EventForm>({
-    resolver: zodResolver(eventSchema),
-    defaultValues: {
-      title: "",
-      description: "",
-      date: "",
-      location: "",
-      target_audience: "",
-    },
-  });
-
-  const handleAddArtist = (artistId: number) => {
-    if (!selectedArtists.some((artist) => artist.artist_id === artistId)) {
-      setSelectedArtists([
-        ...selectedArtists,
-        { artist_id: artistId, amount: "", is_paid: false },
-      ]);
+  const handleAddArtist = () => {
+    if (!selectedArtistId || !artistAmount) {
+      toast.error("Selecione um artista e informe o valor");
+      return;
     }
+
+    const artist = artists.find((a) => a.id === parseInt(selectedArtistId));
+    if (!artist) {
+      toast.error("Artista não encontrado");
+      return;
+    }
+
+    if (
+      eventArtists.some((ea) => ea.artist_id === parseInt(selectedArtistId))
+    ) {
+      toast.error("Artista já adicionado ao evento");
+      return;
+    }
+
+    setEventArtists([
+      ...eventArtists,
+      {
+        artist_id: parseInt(selectedArtistId),
+        artist_name: artist.name,
+        amount: parseFloat(artistAmount),
+      },
+    ]);
+    setSelectedArtistId("");
+    setArtistAmount("");
   };
 
   const handleRemoveArtist = (artistId: number) => {
-    setSelectedArtists(
-      selectedArtists.filter((artist) => artist.artist_id !== artistId)
-    );
+    setEventArtists(eventArtists.filter((ea) => ea.artist_id !== artistId));
   };
 
-  const handleAmountChange = (artistId: number, amount: string) => {
-    setSelectedArtists(
-      selectedArtists.map((artist) =>
-        artist.artist_id === artistId ? { ...artist, amount } : artist
-      )
-    );
-  };
-
-  const handlePaidChange = (artistId: number, is_paid: boolean) => {
-    setSelectedArtists(
-      selectedArtists.map((artist) =>
-        artist.artist_id === artistId ? { ...artist, is_paid } : artist
-      )
-    );
-  };
-
-  const onSubmit = async (data: EventForm) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     try {
       const token = localStorage.getItem("token");
-      const eventData = {
-        ...data,
-        artists: selectedArtists.map((artist) => ({
-          artist_id: artist.artist_id,
-          amount: parseFloat(artist.amount) || 0,
-          is_paid: artist.is_paid,
+      const formattedDate = new Date(date).toISOString();
+      const payload = {
+        title,
+        description,
+        date: formattedDate,
+        location,
+        target_audience: targetAudience,
+        artists: eventArtists.map((ea) => ({
+          artist_id: ea.artist_id,
+          amount: ea.amount,
         })),
       };
+      console.log("Dados enviados no POST:", payload);
       const response = await axios.post(
         "http://localhost:5000/api/events",
-        eventData,
-        { headers: { Authorization: `Bearer ${token}` } }
+        payload,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
       );
-      toast.success(`Evento cadastrado! ID: ${response.data.id}`);
-      form.reset();
-      setSelectedArtists([]);
+      toast.success("Evento criado com sucesso!");
+      router.push("/search");
     } catch (error) {
       if (axios.isAxiosError(error)) {
         toast.error(
-          `Erro ao cadastrar evento: ${
+          `Erro ao criar evento: ${
             error.response?.data?.error || error.message
           }`
         );
       } else {
-        toast.error(`Erro ao cadastrar evento: ${String(error)}`);
+        toast.error(`Erro ao criar evento: ${String(error)}`);
       }
     }
   };
@@ -164,139 +157,143 @@ export default function NewEvent() {
   return (
     <div className="p-8">
       <h1 className="text-3xl font-bold mb-6 text-neutral-900">
-        Cadastrar Evento
+        Criar Novo Evento
       </h1>
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          <FormField
-            control={form.control}
-            name="title"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Título</FormLabel>
-                <FormControl>
-                  <Input placeholder="Digite o título" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-neutral-700">
+            Título
+          </label>
+          <Input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
           />
-          <FormField
-            control={form.control}
-            name="description"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Descrição</FormLabel>
-                <FormControl>
-                  <Input placeholder="Digite a descrição" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-neutral-700">
+            Descrição
+          </label>
+          <Input
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
           />
-          <FormField
-            control={form.control}
-            name="date"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Data</FormLabel>
-                <FormControl>
-                  <Input type="datetime-local" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-neutral-700">
+            Data
+          </label>
+          <Input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            required
           />
-          <FormField
-            control={form.control}
-            name="location"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Local</FormLabel>
-                <FormControl>
-                  <Input placeholder="Digite o local" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-neutral-700">
+            Local
+          </label>
+          <Input
+            type="text"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            required
           />
-          <FormField
-            control={form.control}
-            name="target_audience"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Público-Alvo</FormLabel>
-                <FormControl>
-                  <Input placeholder="Digite o público-alvo" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Artistas</h2>
-            <Select onValueChange={(value) => handleAddArtist(Number(value))}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um artista" />
-              </SelectTrigger>
-              <SelectContent>
-                {artists.map((artist) => (
-                  <SelectItem key={artist.id} value={String(artist.id)}>
-                    {artist.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedArtists.length > 0 && (
-              <div className="space-y-2">
-                {selectedArtists.map((selected) => {
-                  const artist = artists.find(
-                    (a) => a.id === selected.artist_id
-                  );
-                  return (
-                    <div
-                      key={selected.artist_id}
-                      className="flex items-center gap-4 p-2 border rounded-md"
-                    >
-                      <span className="flex-1">{artist?.name}</span>
-                      <Input
-                        type="number"
-                        placeholder="Quantia (R$)"
-                        value={selected.amount}
-                        onChange={(e) =>
-                          handleAmountChange(selected.artist_id, e.target.value)
-                        }
-                        className="w-32"
-                      />
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          checked={selected.is_paid}
-                          onCheckedChange={(checked) =>
-                            handlePaidChange(
-                              selected.artist_id,
-                              checked as boolean
-                            )
-                          }
-                        />
-                        <span>Já Pago</span>
-                      </div>
-                      <Button
-                        variant="destructive"
-                        onClick={() => handleRemoveArtist(selected.artist_id)}
-                      >
-                        Remover
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-neutral-700">
+            Público-Alvo
+          </label>
+          <Select onValueChange={setTargetAudience} value={targetAudience}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione o público-alvo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Geral">Geral</SelectItem>
+              <SelectItem value="Infantil">Infantil</SelectItem>
+              <SelectItem value="Adulto">Adulto</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Seção para adicionar artistas */}
+        <div>
+          <h2 className="text-2xl font-semibold mb-4 text-neutral-900">
+            Artistas
+          </h2>
+          <div className="flex flex-col sm:flex-row gap-4 mb-4">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-neutral-700">
+                Artista
+              </label>
+              <Select
+                onValueChange={setSelectedArtistId}
+                value={selectedArtistId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um artista" />
+                </SelectTrigger>
+                <SelectContent>
+                  {artists.map((artist) => (
+                    <SelectItem key={artist.id} value={artist.id.toString()}>
+                      {artist.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-neutral-700">
+                Quantia (R$)
+              </label>
+              <Input
+                type="number"
+                value={artistAmount}
+                onChange={(e) => setArtistAmount(e.target.value)}
+                placeholder="Digite o valor"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button type="button" onClick={handleAddArtist}>
+                Adicionar
+              </Button>
+            </div>
           </div>
-          <Button type="submit" className="w-full">
-            Cadastrar
+
+          {eventArtists.length > 0 ? (
+            <ul className="list-disc list-inside">
+              {eventArtists.map((ea) => (
+                <li key={ea.artist_id}>
+                  {ea.artist_name} - R$ {ea.amount.toFixed(2)}{" "}
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => handleRemoveArtist(ea.artist_id)}
+                  >
+                    Remover
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-neutral-700">Nenhum artista adicionado.</p>
+          )}
+        </div>
+
+        <div className="flex gap-4">
+          <Button type="submit">Criar Evento</Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => router.push("/search")}
+          >
+            Cancelar
           </Button>
-        </form>
-      </Form>
+        </div>
+      </form>
     </div>
   );
 }

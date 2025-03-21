@@ -5,59 +5,60 @@ const { authenticateToken, authorizeRole } = require("../middleware/auth");
 const router = express.Router();
 
 // POST - Cadastro de eventos (apenas admin e secretary podem cadastrar)
-router.post(
-  "/events",
-  authenticateToken,
-  authorizeRole(["admin", "secretary"]),
-  async (req, res) => {
-    const { title, date, location, target_audience, artists } = req.body;
+router.post("/events", authenticateToken, async (req, res) => {
+  try {
+    const { title, description, date, location, target_audience, artists } =
+      req.body;
 
-    if (!title || !date || !location) {
-      return res
-        .status(400)
-        .json({ error: "Título, data e local são obrigatórios" });
+    // Validar os dados
+    if (!title || !date || !location || !target_audience) {
+      return res.status(400).json({ error: "Campos obrigatórios ausentes" });
     }
 
+    // Verificar se o usuário é admin ou secretary
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    // Converter a data para o formato MySQL
+    let formattedDate;
     try {
-      const connection = await db.getConnection();
-      await connection.beginTransaction();
-
-      try {
-        const [eventResult] = await connection.query(
-          "INSERT INTO events (title, date, location, target_audience) VALUES (?, ?, ?, ?)",
-          [title, date, location, target_audience || null]
-        );
-        const eventId = eventResult.insertId;
-
-        if (artists && Array.isArray(artists) && artists.length > 0) {
-          const artistValues = artists.map((artist) => [
-            eventId,
-            artist.artist_id, // Agora artist_id é o id do usuário (user_id)
-            artist.amount || 0,
-            artist.is_paid ? 1 : 0,
-          ]);
-          await connection.query(
-            "INSERT INTO event_artists (event_id, user_id, amount, is_paid) VALUES ?",
-            [artistValues]
-          );
-        }
-
-        await connection.commit();
-        res.status(201).json({ id: eventId, title, date, location });
-      } catch (error) {
-        await connection.rollback();
-        throw error;
-      } finally {
-        connection.release();
-      }
+      formattedDate = new Date(date)
+        .toISOString()
+        .slice(0, 19)
+        .replace("T", " ");
     } catch (error) {
-      console.error("Erro ao cadastrar evento:", error);
-      res
-        .status(500)
-        .json({ error: "Erro ao cadastrar evento", details: error.message });
+      return res.status(400).json({ error: "Formato de data inválido" });
     }
+
+    // Inserir o evento
+    const [result] = await db.query(
+      `
+      INSERT INTO events (title, description, date, location, target_audience, created_at)
+      VALUES (?, ?, ?, ?, ?, NOW())
+    `,
+      [title, description || null, formattedDate, location, target_audience]
+    );
+
+    const eventId = result.insertId;
+
+    // Adicionar os artistas ao evento
+    if (artists && artists.length > 0) {
+      for (const artist of artists) {
+        const { artist_id, amount } = artist;
+        await db.query(
+          "INSERT INTO event_artists (event_id, user_id, amount, is_paid) VALUES (?, ?, ?, ?)",
+          [eventId, artist_id, amount, false]
+        );
+      }
+    }
+
+    res.status(201).json({ message: "Evento criado com sucesso", eventId });
+  } catch (error) {
+    console.error("Erro ao criar evento:", error);
+    res.status(500).json({ error: "Erro ao criar evento" });
   }
-);
+});
 
 // GET - Listar todos os eventos (qualquer usuário autenticado pode ver)
 router.get("/events", authenticateToken, async (req, res) => {
@@ -193,5 +194,166 @@ router.put("/events/:id", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Erro ao atualizar evento" });
   }
 });
+
+// POST /api/events/:id/artists - Adicionar um artista a um evento
+router.post("/events/:id/artists", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { artist_id, amount } = req.body;
+
+    // Validar os dados
+    if (!artist_id || !amount) {
+      return res.status(400).json({ error: "Campos obrigatórios ausentes" });
+    }
+
+    // Verificar se o usuário é admin ou secretary
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    // Verificar se o evento existe
+    const [events] = await db.query("SELECT * FROM events WHERE id = ?", [id]);
+    if (events.length === 0) {
+      return res.status(404).json({ error: "Evento não encontrado" });
+    }
+
+    // Verificar se o artista existe
+    const [artists] = await db.query(
+      "SELECT * FROM users WHERE id = ? AND role = 'artist'",
+      [artist_id]
+    );
+    if (artists.length === 0) {
+      return res.status(404).json({ error: "Artista não encontrado" });
+    }
+
+    // Verificar se o artista já está associado ao evento
+    const [existing] = await db.query(
+      "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
+      [id, artist_id]
+    );
+    if (existing.length > 0) {
+      return res
+        .status(400)
+        .json({ error: "Artista já está associado ao evento" });
+    }
+
+    // Adicionar o artista ao evento
+    await db.query(
+      "INSERT INTO event_artists (event_id, user_id, amount, is_paid) VALUES (?, ?, ?, ?)",
+      [id, artist_id, amount, false]
+    );
+
+    res
+      .status(201)
+      .json({ message: "Artista adicionado ao evento com sucesso" });
+  } catch (error) {
+    console.error("Erro ao adicionar artista ao evento:", error);
+    res.status(500).json({ error: "Erro ao adicionar artista ao evento" });
+  }
+});
+
+// DELETE /api/events/:id/artists/:artistId - Remover um artista de um evento
+router.delete(
+  "/events/:id/artists/:artistId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { id, artistId } = req.params;
+
+      // Verificar se o usuário é admin ou secretary
+      if (!["admin", "secretary"].includes(req.user.role)) {
+        return res.status(403).json({ error: "Acesso negado" });
+      }
+
+      // Verificar se o evento existe
+      const [events] = await db.query("SELECT * FROM events WHERE id = ?", [
+        id,
+      ]);
+      if (events.length === 0) {
+        return res.status(404).json({ error: "Evento não encontrado" });
+      }
+
+      // Verificar se o artista está associado ao evento
+      const [existing] = await db.query(
+        "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
+        [id, artistId]
+      );
+      if (existing.length === 0) {
+        return res
+          .status(404)
+          .json({ error: "Artista não encontrado no evento" });
+      }
+
+      // Remover o artista do evento
+      await db.query(
+        "DELETE FROM event_artists WHERE event_id = ? AND user_id = ?",
+        [id, artistId]
+      );
+
+      res
+        .status(200)
+        .json({ message: "Artista removido do evento com sucesso" });
+    } catch (error) {
+      console.error("Erro ao remover artista do evento:", error);
+      res.status(500).json({ error: "Erro ao remover artista do evento" });
+    }
+  }
+);
+
+// PATCH /api/events/:id/artists/:artistId - Atualizar o status de pagamento de um artista
+router.patch(
+  "/events/:id/artists/:artistId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { id, artistId } = req.params;
+      const { is_paid } = req.body;
+
+      // Validar os dados
+      if (typeof is_paid !== "boolean") {
+        return res
+          .status(400)
+          .json({ error: "O campo is_paid deve ser um booleano" });
+      }
+
+      // Verificar se o usuário é admin ou secretary
+      if (!["admin", "secretary"].includes(req.user.role)) {
+        return res.status(403).json({ error: "Acesso negado" });
+      }
+
+      // Verificar se o evento existe
+      const [events] = await db.query("SELECT * FROM events WHERE id = ?", [
+        id,
+      ]);
+      if (events.length === 0) {
+        return res.status(404).json({ error: "Evento não encontrado" });
+      }
+
+      // Verificar se o artista está associado ao evento
+      const [existing] = await db.query(
+        "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
+        [id, artistId]
+      );
+      if (existing.length === 0) {
+        return res
+          .status(404)
+          .json({ error: "Artista não encontrado no evento" });
+      }
+
+      // Atualizar o status de pagamento
+      await db.query(
+        "UPDATE event_artists SET is_paid = ? WHERE event_id = ? AND user_id = ?",
+        [is_paid, id, artistId]
+      );
+
+      res
+        .status(200)
+        .json({ message: "Status de pagamento atualizado com sucesso" });
+    } catch (error) {
+      console.error("Erro ao atualizar status de pagamento:", error);
+      res.status(500).json({ error: "Erro ao atualizar status de pagamento" });
+    }
+  }
+);
 
 module.exports = router;
