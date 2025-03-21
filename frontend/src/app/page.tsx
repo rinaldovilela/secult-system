@@ -6,7 +6,12 @@ import { Button } from "@/components/ui/button";
 import { getUser } from "@/lib/auth";
 
 export default function Home() {
-  const [user, setUser] = useState<{ name: string; role: string } | null>(null);
+  interface User {
+    name: string;
+    role: string;
+  }
+
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     const storedUser = getUser();
