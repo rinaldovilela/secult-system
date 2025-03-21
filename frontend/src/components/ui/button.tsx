@@ -8,10 +8,16 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary-500 text-white hover:bg-primary-600", // Garantindo texto branco
+        default: "bg-primary-500 text-white hover:bg-primary-600", // Para fundos escuros
         outline:
-          "border border-white bg-transparent text-white hover:bg-white hover:text-neutral-900",
-        secondary: "bg-secondary-500 text-white hover:bg-secondary-600",
+          "border border-white bg-transparent text-white hover:bg-white hover:text-neutral-900", // Para fundos escuros
+        secondary: "bg-secondary-500 text-white hover:bg-secondary-600", // Para fundos escuros
+        light:
+          "bg-primary-500 text-white hover:bg-primary-600 border border-primary-500", // Para fundos claros, mantendo o mesmo fundo mas garantindo contraste
+        lightOutline:
+          "border border-primary-500 bg-transparent text-primary-500 hover:bg-primary-500 hover:text-white", // Para fundos claros
+        lightSecondary:
+          "bg-secondary-500 text-white hover:bg-secondary-600 border border-secondary-500", // Para fundos claros
       },
       size: {
         default: "h-10 px-4 py-2",
