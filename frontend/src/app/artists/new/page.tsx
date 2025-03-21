@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { useForm } from "react-hook-form";
@@ -34,10 +34,13 @@ export default function NewArtist() {
   const [isLoading, setIsLoading] = useState(true);
   const user = useAuth();
 
-  if (user && !["admin", "secretary"].includes(user.role)) {
-    router.push("/login");
-  }
-  setTimeout(() => setIsLoading(false), 0);
+  useEffect(() => {
+    if (user === null || !["admin", "secretary"].includes(user?.role)) {
+      router.push("/login");
+      return;
+    }
+    setIsLoading(false);
+  }, [user, router]);
 
   const form = useForm<ArtistForm>({
     resolver: zodResolver(artistSchema),
@@ -73,7 +76,7 @@ export default function NewArtist() {
   };
 
   if (isLoading) return <Loading />;
-  if (!user) return null;
+  if (!user || !["admin", "secretary"].includes(user.role)) return null;
 
   return (
     <div className="p-8">
