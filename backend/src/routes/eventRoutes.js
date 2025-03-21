@@ -101,4 +101,97 @@ router.get("/events", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Erro ao listar eventos" });
   }
 });
+
+router.get("/events/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Buscar o evento
+    const [events] = await db.query(
+      `
+      SELECT e.*
+      FROM events e
+      WHERE e.id = ?
+    `,
+      [id]
+    );
+
+    if (events.length === 0) {
+      return res.status(404).json({ error: "Evento não encontrado" });
+    }
+
+    const event = events[0];
+
+    // Buscar os artistas associados
+    const [artists] = await db.query(
+      `
+      SELECT ea.user_id as artist_id, u.name as artist_name, ea.amount, ea.is_paid
+      FROM event_artists ea
+      LEFT JOIN users u ON ea.user_id = u.id
+      WHERE ea.event_id = ?
+    `,
+      [id]
+    );
+
+    // Converter amount para número
+    const parsedArtists = artists.map((artist) => ({
+      ...artist,
+      amount: Number(artist.amount),
+    }));
+
+    res.status(200).json({ ...event, artists: parsedArtists });
+  } catch (error) {
+    console.error("Erro ao buscar evento:", error);
+    res.status(500).json({ error: "Erro ao buscar evento" });
+  }
+});
+
+// PUT /api/events/:id
+router.put("/events/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, date, location, target_audience } = req.body;
+
+    // Validar os dados
+    if (!title || !date || !location || !target_audience) {
+      return res.status(400).json({ error: "Campos obrigatórios ausentes" });
+    }
+
+    // Verificar se o usuário é admin ou secretary
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    // Converter a data para o formato MySQL (ex.: "2025-03-21 00:00:00")
+    let formattedDate;
+    try {
+      formattedDate = new Date(date)
+        .toISOString()
+        .slice(0, 19)
+        .replace("T", " ");
+    } catch (error) {
+      return res.status(400).json({ error: "Formato de data inválido" });
+    }
+
+    // Atualizar o evento
+    const [result] = await db.query(
+      `
+      UPDATE events
+      SET title = ?, description = ?, date = ?, location = ?, target_audience = ?
+      WHERE id = ?
+    `,
+      [title, description || null, formattedDate, location, target_audience, id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Evento não encontrado" });
+    }
+
+    res.status(200).json({ message: "Evento atualizado com sucesso" });
+  } catch (error) {
+    console.error("Erro ao atualizar evento:", error);
+    res.status(500).json({ error: "Erro ao atualizar evento" });
+  }
+});
+
 module.exports = router;
