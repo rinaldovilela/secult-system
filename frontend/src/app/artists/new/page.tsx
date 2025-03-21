@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { getUser } from "@/lib/auth";
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import axios from "axios";
 import {
   Form,
   FormControl,
@@ -14,9 +17,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import axios from "axios";
 
-// Schema de validação com Zod
 const artistSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório"),
   email: z.string().email("Email inválido"),
@@ -27,6 +28,15 @@ const artistSchema = z.object({
 type ArtistForm = z.infer<typeof artistSchema>;
 
 export default function NewArtist() {
+  const router = useRouter();
+  const user = getUser();
+
+  useEffect(() => {
+    if (!user || !["admin", "secretary"].includes(user.role)) {
+      router.push("/login");
+    }
+  }, [user, router]);
+
   const form = useForm<ArtistForm>({
     resolver: zodResolver(artistSchema),
     defaultValues: {
@@ -39,10 +49,11 @@ export default function NewArtist() {
 
   const onSubmit = async (data: ArtistForm) => {
     try {
+      const token = localStorage.getItem("token");
       const response = await axios.post(
         "http://localhost:5000/api/artists",
         data,
-        { headers: { "Content-Type": "application/json" } }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       alert(`Artista cadastrado! ID: ${response.data.id}`);
       form.reset();
@@ -63,6 +74,8 @@ export default function NewArtist() {
       }
     }
   };
+
+  if (!user) return null;
 
   return (
     <div className="p-8">
@@ -123,10 +136,7 @@ export default function NewArtist() {
               </FormItem>
             )}
           />
-          <Button
-            type="submit"
-            className="w-full bg-primary-500 hover:bg-primary-600"
-          >
+          <Button type="submit" className="w-full">
             Cadastrar
           </Button>
         </form>
