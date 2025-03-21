@@ -5,8 +5,16 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import axios from "axios";
 import toast from "react-hot-toast";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -16,21 +24,13 @@ import {
 } from "@/components/ui/select";
 import Loading from "@/components/ui/loading";
 
-interface Artist {
-  id: number;
-  name: string;
-  email: string;
-  bio?: string;
-  portfolioUrl?: string;
-  art_type?: string;
-}
-
 interface Event {
   id: number;
   title: string;
   description?: string;
   date: string;
   location: string;
+  target_audience: string;
   artists: {
     artist_id: number;
     artist_name: string;
@@ -43,99 +43,84 @@ export default function Search() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const { user, isAuthLoading } = useAuth();
-  const [artists, setArtists] = useState<Artist[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [titleFilter, setTitleFilter] = useState("");
   const [dateStart, setDateStart] = useState("");
   const [dateEnd, setDateEnd] = useState("");
-  const [artType, setArtType] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState("all");
 
   useEffect(() => {
     if (isAuthLoading) return;
 
-    if (user === null) {
+    if (user === null || !["admin", "secretary"].includes(user?.role)) {
       router.push("/login");
       return;
     }
 
-    const fetchData = async () => {
+    const fetchEvents = async () => {
       try {
         const token = localStorage.getItem("token");
-        const [artistsResponse, eventsResponse] = await Promise.all([
-          axios.get("http://localhost:5000/api/artists", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get("http://localhost:5000/api/events", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ]);
-        setArtists(artistsResponse.data);
-        setEvents(eventsResponse.data);
+        const response = await axios.get("http://localhost:5000/api/events", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setEvents(response.data);
       } catch (error) {
         if (axios.isAxiosError(error)) {
           toast.error(
-            `Erro ao buscar dados: ${
+            `Erro ao buscar eventos: ${
               error.response?.data?.error || error.message
             }`
           );
         } else {
-          toast.error(`Erro ao buscar dados: ${String(error)}`);
+          toast.error(`Erro ao buscar eventos: ${String(error)}`);
         }
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchData();
+    fetchEvents();
   }, [user, isAuthLoading, router]);
 
-  const filteredArtists = artists.filter((artist) => {
-    const matchesSearchTerm =
-      artist.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      artist.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesArtType = artType ? artist.art_type === artType : true;
-    return matchesSearchTerm && matchesArtType;
-  });
-
   const filteredEvents = events.filter((event) => {
-    const matchesSearchTerm =
-      event.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      event.location.toLowerCase().includes(searchTerm.toLowerCase());
     const eventDate = new Date(event.date);
+    const matchesTitle = event.title
+      .toLowerCase()
+      .includes(titleFilter.toLowerCase());
     const matchesDateStart = dateStart
       ? eventDate >= new Date(dateStart)
       : true;
     const matchesDateEnd = dateEnd ? eventDate <= new Date(dateEnd) : true;
-    const matchesPaymentStatus = paymentStatus
-      ? event.artists.some((artist) =>
-          paymentStatus === "paid" ? artist.is_paid : !artist.is_paid
-        )
-      : true;
+    const matchesPaymentStatus =
+      paymentStatus && paymentStatus !== "all"
+        ? event.artists.some((artist) =>
+            paymentStatus === "paid" ? artist.is_paid : !artist.is_paid
+          )
+        : true;
     return (
-      matchesSearchTerm &&
-      matchesDateStart &&
-      matchesDateEnd &&
-      matchesPaymentStatus
+      matchesTitle && matchesDateStart && matchesDateEnd && matchesPaymentStatus
     );
   });
 
   if (isAuthLoading || isLoading) return <Loading />;
-  if (!user) return null;
+  if (!user || !["admin", "secretary"].includes(user.role)) return null;
 
   return (
     <div className="p-8">
-      <h1 className="text-3xl font-bold mb-6 text-neutral-900">
-        Consultar Artistas e Eventos
-      </h1>
+      <h1 className="text-3xl font-bold mb-6 text-neutral-900">Consulta</h1>
       <div className="mb-6 space-y-4">
-        <Input
-          placeholder="Pesquisar por nome, email, título ou local..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-md"
-        />
         <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-neutral-700">
+              Título do Evento
+            </label>
+            <Input
+              type="text"
+              value={titleFilter}
+              onChange={(e) => setTitleFilter(e.target.value)}
+              placeholder="Digite o título do evento"
+            />
+          </div>
           <div className="flex-1">
             <label className="block text-sm font-medium text-neutral-700">
               Data Inicial
@@ -158,24 +143,6 @@ export default function Search() {
           </div>
           <div className="flex-1">
             <label className="block text-sm font-medium text-neutral-700">
-              Tipo de Arte
-            </label>
-            <Select onValueChange={setArtType} value={artType}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o tipo de arte" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">Todos</SelectItem>
-                <SelectItem value="música">Música</SelectItem>
-                <SelectItem value="teatro">Teatro</SelectItem>
-                <SelectItem value="dança">Dança</SelectItem>
-                <SelectItem value="artes visuais">Artes Visuais</SelectItem>
-                <SelectItem value="literatura">Literatura</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-neutral-700">
               Status de Pagamento
             </label>
             <Select onValueChange={setPaymentStatus} value={paymentStatus}>
@@ -183,7 +150,7 @@ export default function Search() {
                 <SelectValue placeholder="Selecione o status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todos</SelectItem>
+                <SelectItem value="all">Todos</SelectItem>
                 <SelectItem value="paid">Pago</SelectItem>
                 <SelectItem value="pending">Pendente</SelectItem>
               </SelectContent>
@@ -191,98 +158,60 @@ export default function Search() {
           </div>
         </div>
       </div>
-      <div className="space-y-8">
-        <div>
-          <h2 className="text-2xl font-semibold mb-4 text-neutral-900">
-            Artistas
-          </h2>
-          {filteredArtists.length > 0 ? (
-            <ul className="space-y-4">
-              {filteredArtists.map((artist) => (
-                <li
-                  key={artist.id}
-                  className="p-4 bg-white rounded-lg shadow-md"
-                >
-                  <p>
-                    <strong>Nome:</strong> {artist.name}
-                  </p>
-                  <p>
-                    <strong>Email:</strong> {artist.email}
-                  </p>
-                  {artist.art_type && (
-                    <p>
-                      <strong>Tipo de Arte:</strong> {artist.art_type}
-                    </p>
-                  )}
-                  {artist.bio && (
-                    <p>
-                      <strong>Biografia:</strong> {artist.bio}
-                    </p>
-                  )}
-                  {artist.portfolioUrl && (
-                    <p>
-                      <strong>Portfólio:</strong>{" "}
-                      <a
-                        href={artist.portfolioUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
+      <div>
+        <h2 className="text-2xl font-semibold mb-4 text-neutral-900">
+          Eventos
+        </h2>
+        {filteredEvents.length > 0 ? (
+          <div className="border rounded-lg overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Título</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Local</TableHead>
+                  <TableHead>Descrição</TableHead>
+                  <TableHead>Artistas</TableHead>
+                  <TableHead>Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredEvents.map((event) => (
+                  <TableRow key={event.id}>
+                    <TableCell>{event.id}</TableCell>
+                    <TableCell>{event.title}</TableCell>
+                    <TableCell>
+                      {new Date(event.date).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>{event.location}</TableCell>
+                    <TableCell>{event.description || "-"}</TableCell>
+                    <TableCell>
+                      <ul className="list-disc list-inside">
+                        {event.artists.map((artist) => (
+                          <li key={artist.artist_id}>
+                            {artist.artist_name} - R$ {artist.amount.toFixed(2)}{" "}
+                            - {artist.is_paid ? "Pago" : "Pendente"}
+                          </li>
+                        ))}
+                      </ul>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="outline"
+                        onClick={() => router.push(`/events/${event.id}`)}
                       >
-                        {artist.portfolioUrl}
-                      </a>
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-neutral-700">Nenhum artista encontrado.</p>
-          )}
-        </div>
-        <div>
-          <h2 className="text-2xl font-semibold mb-4 text-neutral-900">
-            Eventos
-          </h2>
-          {filteredEvents.length > 0 ? (
-            <ul className="space-y-4">
-              {filteredEvents.map((event) => (
-                <li
-                  key={event.id}
-                  className="p-4 bg-white rounded-lg shadow-md"
-                >
-                  <p>
-                    <strong>Título:</strong> {event.title}
-                  </p>
-                  <p>
-                    <strong>Data:</strong>{" "}
-                    {new Date(event.date).toLocaleDateString()}
-                  </p>
-                  <p>
-                    <strong>Local:</strong> {event.location}
-                  </p>
-                  {event.description && (
-                    <p>
-                      <strong>Descrição:</strong> {event.description}
-                    </p>
-                  )}
-                  <p>
-                    <strong>Artistas:</strong>
-                  </p>
-                  <ul className="ml-4 list-disc">
-                    {event.artists.map((artist) => (
-                      <li key={artist.artist_id}>
-                        {artist.artist_name} - R$ {artist.amount.toFixed(2)} -{" "}
-                        {artist.is_paid ? "Pago" : "Pendente"}
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-neutral-700">Nenhum evento encontrado.</p>
-          )}
-        </div>
+                        Editar
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <p className="text-neutral-700">Nenhum evento encontrado.</p>
+        )}
       </div>
     </div>
   );
