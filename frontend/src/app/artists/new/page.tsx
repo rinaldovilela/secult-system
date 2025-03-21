@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { getUser } from "@/lib/auth";
+import { useAuth } from "@/lib/useAuth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -32,16 +32,12 @@ type ArtistForm = z.infer<typeof artistSchema>;
 export default function NewArtist() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState(null);
+  const user = useAuth();
 
-  useEffect(() => {
-    const storedUser = getUser();
-    setUser(storedUser);
-    if (!storedUser || !["admin", "secretary"].includes(storedUser?.role)) {
-      router.push("/login");
-    }
-    setIsLoading(false);
-  }, [router]);
+  if (user && !["admin", "secretary"].includes(user.role)) {
+    router.push("/login");
+  }
+  setTimeout(() => setIsLoading(false), 0);
 
   const form = useForm<ArtistForm>({
     resolver: zodResolver(artistSchema),

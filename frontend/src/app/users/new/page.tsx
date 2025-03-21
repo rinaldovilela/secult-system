@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { getUser } from "@/lib/auth";
+import { useAuth } from "@/lib/useAuth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import axios from "axios";
+import toast from "react-hot-toast";
 import {
   Form,
   FormControl,
@@ -24,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import Loading from "@/components/ui/loading";
 
 const userSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório"),
@@ -38,13 +40,13 @@ type UserForm = z.infer<typeof userSchema>;
 
 export default function NewUser() {
   const router = useRouter();
-  const user = getUser();
+  const [isLoading, setIsLoading] = useState(true);
+  const user = useAuth();
 
-  useEffect(() => {
-    if (!user || user.role !== "admin") {
-      router.push("/login");
-    }
-  }, [user, router]);
+  if (user && user.role !== "admin") {
+    router.push("/login");
+  }
+  setTimeout(() => setIsLoading(false), 0);
 
   const form = useForm<UserForm>({
     resolver: zodResolver(userSchema),
@@ -64,19 +66,20 @@ export default function NewUser() {
         data,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert(`Usuário cadastrado! ID: ${response.data.id}`);
+      toast.success(`Usuário cadastrado! ID: ${response.data.id}`);
       form.reset();
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        alert(
+        toast.error(
           `Erro ao cadastrar: ${error.response?.data?.error || error.message}`
         );
       } else {
-        alert(`Erro ao cadastrar: ${String(error)}`);
+        toast.error(`Erro ao cadastrar: ${String(error)}`);
       }
     }
   };
 
+  if (isLoading) return <Loading />;
   if (!user) return null;
 
   return (

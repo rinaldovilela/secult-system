@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { getUser } from "@/lib/auth";
+import { useAuth } from "@/lib/useAuth";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { Input } from "@/components/ui/input";
@@ -20,48 +20,43 @@ import Loading from "@/components/ui/loading";
 export default function Search() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState(null);
+  const user = useAuth();
 
-  useEffect(() => {
-    const storedUser = getUser();
-    setUser(storedUser);
-    if (!storedUser) {
-      router.push("/login");
-    }
-    setIsLoading(false);
-  }, [router]);
+  if (user === null) {
+    router.push("/login");
+  }
+  setTimeout(() => setIsLoading(false), 0);
 
   const [artists, setArtists] = useState([]);
   const [events, setEvents] = useState([]);
   const [artistFilter, setArtistFilter] = useState("");
   const [eventFilter, setEventFilter] = useState("");
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const artistsResponse = await axios.get(
-          "http://localhost:5000/api/artists",
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-        setArtists(artistsResponse.data);
+  const fetchData = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const artistsResponse = await axios.get(
+        "http://localhost:5000/api/artists",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      setArtists(artistsResponse.data);
 
-        const eventsResponse = await axios.get(
-          "http://localhost:5000/api/events",
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-        setEvents(eventsResponse.data);
-      } catch (error) {
-        console.error("Erro ao carregar dados:", error);
-        toast.error("Erro ao carregar dados");
-      }
-    };
-    if (user) fetchData();
-  }, [user]);
+      const eventsResponse = await axios.get(
+        "http://localhost:5000/api/events",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      setEvents(eventsResponse.data);
+    } catch (error) {
+      console.error("Erro ao carregar dados:", error);
+      toast.error("Erro ao carregar dados");
+    }
+  };
+
+  if (user) fetchData();
 
   const filteredArtists = artists.filter((artist: any) =>
     artist.name.toLowerCase().includes(artistFilter.toLowerCase())

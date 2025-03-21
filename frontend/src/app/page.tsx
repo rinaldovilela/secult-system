@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { getUser } from "@/lib/auth";
+import { useAuth } from "@/lib/useAuth";
 
 export default function Home() {
   interface User {
@@ -11,12 +10,7 @@ export default function Home() {
     role: string;
   }
 
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
-    const storedUser = getUser();
-    setUser(storedUser);
-  }, []);
+  const user = useAuth();
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-100">

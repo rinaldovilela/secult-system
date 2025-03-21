@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getUser } from "@/lib/auth";
+import { useAuth } from "@/lib/useAuth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -34,20 +34,20 @@ type EventForm = z.infer<typeof eventSchema>;
 export default function NewEvent() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    const storedUser = getUser();
-    setUser(storedUser);
-    if (!storedUser || !["admin", "secretary"].includes(storedUser?.role)) {
-      router.push("/login");
-    }
-    setIsLoading(false);
-  }, [router]);
-
   const [artists, setArtists] = useState([]);
+  const user = useAuth();
 
   useEffect(() => {
+    if (user === null) {
+      router.push("/login");
+      return;
+    }
+
+    if (!["admin", "secretary"].includes(user.role)) {
+      router.push("/login");
+      return;
+    }
+
     const fetchArtists = async () => {
       try {
         const token = localStorage.getItem("token");
@@ -58,10 +58,13 @@ export default function NewEvent() {
       } catch (error) {
         console.error("Erro ao carregar artistas:", error);
         toast.error("Erro ao carregar artistas");
+      } finally {
+        setIsLoading(false);
       }
     };
-    if (user) fetchArtists();
-  }, [user]);
+
+    fetchArtists();
+  }, [user, router]);
 
   const form = useForm<EventForm>({
     resolver: zodResolver(eventSchema),
@@ -98,7 +101,7 @@ export default function NewEvent() {
   };
 
   if (isLoading) return <Loading />;
-  if (!user) return null;
+  if (!user || !["admin", "secretary"].includes(user.role)) return null;
 
   return (
     <div className="p-8">
