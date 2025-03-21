@@ -6,6 +6,14 @@ import { useAuth } from "@/lib/useAuth";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import Loading from "@/components/ui/loading";
 import { saveAs } from "file-saver";
 
@@ -34,10 +42,7 @@ interface Event {
 export default function Reports() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const { user, isAuthLoading } = useAuth() as {
-    user: { role: string } | null;
-    isAuthLoading: boolean;
-  };
+  const { user, isAuthLoading } = useAuth();
   const [artists, setArtists] = useState<Artist[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
 
@@ -81,7 +86,6 @@ export default function Reports() {
   }, [user, isAuthLoading, router]);
 
   const downloadCSV = () => {
-    // Cabeçalhos do CSV para artistas
     const artistHeaders = [
       "ID",
       "Nome",
@@ -97,7 +101,6 @@ export default function Reports() {
       artist.portfolioUrl || "",
     ]);
 
-    // Cabeçalhos do CSV para eventos
     const eventHeaders = [
       "ID",
       "Título",
@@ -121,12 +124,11 @@ export default function Reports() {
       ])
     );
 
-    // Combinar os dados em um único CSV
     const csvContent = [
       "Relatório de Artistas",
       artistHeaders.join(","),
       ...artistRows.map((row) => row.join(",")),
-      "", // Linha em branco para separar
+      "",
       "Relatório de Eventos",
       eventHeaders.join(","),
       ...eventRows.map((row) => row.join(",")),
@@ -151,39 +153,43 @@ export default function Reports() {
             Artistas
           </h2>
           {artists.length > 0 ? (
-            <ul className="space-y-4">
-              {artists.map((artist) => (
-                <li
-                  key={artist.id}
-                  className="p-4 bg-white rounded-lg shadow-md"
-                >
-                  <p>
-                    <strong>Nome:</strong> {artist.name}
-                  </p>
-                  <p>
-                    <strong>Email:</strong> {artist.email}
-                  </p>
-                  {artist.bio && (
-                    <p>
-                      <strong>Biografia:</strong> {artist.bio}
-                    </p>
-                  )}
-                  {artist.portfolioUrl && (
-                    <p>
-                      <strong>Portfólio:</strong>{" "}
-                      <a
-                        href={artist.portfolioUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
-                      >
-                        {artist.portfolioUrl}
-                      </a>
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <div className="border rounded-lg overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Biografia</TableHead>
+                    <TableHead>Portfólio</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {artists.map((artist) => (
+                    <TableRow key={artist.id}>
+                      <TableCell>{artist.id}</TableCell>
+                      <TableCell>{artist.name}</TableCell>
+                      <TableCell>{artist.email}</TableCell>
+                      <TableCell>{artist.bio || "-"}</TableCell>
+                      <TableCell>
+                        {artist.portfolioUrl ? (
+                          <a
+                            href={artist.portfolioUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline"
+                          >
+                            {artist.portfolioUrl}
+                          </a>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           ) : (
             <p className="text-neutral-700">Nenhum artista encontrado.</p>
           )}
@@ -193,41 +199,44 @@ export default function Reports() {
             Eventos
           </h2>
           {events.length > 0 ? (
-            <ul className="space-y-4">
-              {events.map((event) => (
-                <li
-                  key={event.id}
-                  className="p-4 bg-white rounded-lg shadow-md"
-                >
-                  <p>
-                    <strong>Título:</strong> {event.title}
-                  </p>
-                  <p>
-                    <strong>Data:</strong>{" "}
-                    {new Date(event.date).toLocaleDateString()}
-                  </p>
-                  <p>
-                    <strong>Local:</strong> {event.location}
-                  </p>
-                  {event.description && (
-                    <p>
-                      <strong>Descrição:</strong> {event.description}
-                    </p>
-                  )}
-                  <p>
-                    <strong>Artistas:</strong>
-                  </p>
-                  <ul className="ml-4 list-disc">
-                    {event.artists.map((artist) => (
-                      <li key={artist.artist_id}>
-                        {artist.artist_name} - R$ {artist.amount.toFixed(2)} -{" "}
-                        {artist.is_paid ? "Pago" : "Pendente"}
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
+            <div className="border rounded-lg overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Título</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Local</TableHead>
+                    <TableHead>Descrição</TableHead>
+                    <TableHead>Artistas</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {events.map((event) => (
+                    <TableRow key={event.id}>
+                      <TableCell>{event.id}</TableCell>
+                      <TableCell>{event.title}</TableCell>
+                      <TableCell>
+                        {new Date(event.date).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>{event.location}</TableCell>
+                      <TableCell>{event.description || "-"}</TableCell>
+                      <TableCell>
+                        <ul className="list-disc list-inside">
+                          {event.artists.map((artist) => (
+                            <li key={artist.artist_id}>
+                              {artist.artist_name} - R${" "}
+                              {artist.amount.toFixed(2)} -{" "}
+                              {artist.is_paid ? "Pago" : "Pendente"}
+                            </li>
+                          ))}
+                        </ul>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           ) : (
             <p className="text-neutral-700">Nenhum evento encontrado.</p>
           )}

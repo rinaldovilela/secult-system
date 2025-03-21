@@ -32,12 +32,12 @@ router.post(
         if (artists && Array.isArray(artists) && artists.length > 0) {
           const artistValues = artists.map((artist) => [
             eventId,
-            artist.artist_id,
-            artist.amount || 0, // Quantia padrão como 0 se não fornecida
-            artist.is_paid ? 1 : 0, // Converte booleano para 1 ou 0
+            artist.artist_id, // Agora artist_id é o id do usuário (user_id)
+            artist.amount || 0,
+            artist.is_paid ? 1 : 0,
           ]);
           await connection.query(
-            "INSERT INTO event_artists (event_id, artist_id, amount, is_paid) VALUES ?",
+            "INSERT INTO event_artists (event_id, user_id, amount, is_paid) VALUES ?",
             [artistValues]
           );
         }
@@ -62,42 +62,43 @@ router.post(
 // GET - Listar todos os eventos (qualquer usuário autenticado pode ver)
 router.get("/events", authenticateToken, async (req, res) => {
   try {
+    // Buscar todos os eventos
     const [events] = await db.query(`
-      SELECT e.*, 
-             GROUP_CONCAT(
-               JSON_OBJECT(
-                 'artist_id', ea.artist_id,
-                 'artist_name', a.name,
-                 'amount', ea.amount,
-                 'is_paid', ea.is_paid
-               )
-             ) as artists
-      FROM events e
-      LEFT JOIN event_artists ea ON e.id = ea.event_id
-      LEFT JOIN artists a ON ea.artist_id = a.id
-      GROUP BY e.id
+      SELECT * FROM events
     `);
-    // Parse do JSON para cada evento
-    const parsedEvents = events.map((event) => ({
-      ...event,
-      artists: event.artists
-        ? event.artists
-            .split(",")
-            .map((artist) => {
-              try {
-                return JSON.parse(artist);
-              } catch {
-                return null;
-              }
-            })
-            .filter(Boolean)
-        : [],
-    }));
-    res.status(200).json(parsedEvents);
+    console.log("Eventos:", events);
+
+    // Para cada evento, buscar os artistas associados
+    const eventsWithArtists = await Promise.all(
+      events.map(async (event) => {
+        console.log(`Buscando artistas para o evento ${event.id}`);
+        const [artists] = await db.query(
+          `
+          SELECT ea.user_id as artist_id, u.name as artist_name, ea.amount, ea.is_paid
+          FROM event_artists ea
+          LEFT JOIN users u ON ea.user_id = u.id
+          WHERE ea.event_id = ?
+        `,
+          [event.id]
+        );
+        // Converter amount para número
+        const parsedArtists = artists.map((artist) => ({
+          ...artist,
+          amount: Number(artist.amount), // Converter para número
+        }));
+        console.log(
+          `Artistas encontrados para o evento ${event.id}:`,
+          parsedArtists
+        );
+        return { ...event, artists: parsedArtists };
+      })
+    );
+
+    console.log("Eventos com artistas:", eventsWithArtists);
+    res.status(200).json(eventsWithArtists);
   } catch (error) {
     console.error("Erro ao listar eventos:", error);
     res.status(500).json({ error: "Erro ao listar eventos" });
   }
 });
-
 module.exports = router;

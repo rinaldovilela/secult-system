@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import axios from "axios";
 import toast from "react-hot-toast";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import Loading from "@/components/ui/loading";
 
 interface Event {
@@ -12,16 +20,18 @@ interface Event {
   title: string;
   date: string;
   location: string;
-  artists: { artist_id: number; amount: number; is_paid: boolean }[];
+  artists: {
+    artist_id: number;
+    artist_name: string;
+    amount: number;
+    is_paid: boolean;
+  }[];
 }
 
 export default function Profile() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const { user, isAuthLoading } = useAuth() as {
-    user: { id: number; name: string } | null;
-    isAuthLoading: boolean;
-  };
+  const { user, isAuthLoading } = useAuth();
   const [events, setEvents] = useState<Event[]>([]);
 
   useEffect(() => {
@@ -35,14 +45,34 @@ export default function Profile() {
     const fetchEvents = async () => {
       try {
         const token = localStorage.getItem("token");
+        const userId = Number(user.id);
+        console.log("User ID:", userId);
+
         const response = await axios.get("http://localhost:5000/api/events", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        // Filtra os eventos para mostrar apenas aqueles em que o artista logado participa
-        const userId = user.id; // Supondo que o user retornado pelo useAuth tenha o id
-        const filteredEvents = response.data.filter((event: Event) =>
-          event.artists.some((artist) => artist.artist_id === userId)
-        );
+
+        console.log("Eventos retornados:", response.data);
+
+        const filteredEvents = response.data.filter((event: Event) => {
+          if (!Array.isArray(event.artists)) {
+            console.log(
+              `Evento ${event.id} não tem artists válido:`,
+              event.artists
+            );
+            return false;
+          }
+          return event.artists.some((artist) => {
+            const artistId = Number(artist.artist_id);
+            console.log(
+              `Comparando artistId: ${artistId} (${typeof artistId}) com userId: ${userId} (${typeof userId})`
+            );
+            return artistId === userId;
+          });
+        });
+
+        console.log("Eventos filtrados:", filteredEvents);
+
         setEvents(filteredEvents);
       } catch (error) {
         if (axios.isAxiosError(error)) {
@@ -76,38 +106,43 @@ export default function Profile() {
             Eventos Participados
           </h2>
           {events.length > 0 ? (
-            <ul className="space-y-4">
-              {events.map((event) => {
-                const artistData = event.artists.find(
-                  (artist) => artist.artist_id === user.id
-                );
-                return (
-                  <li
-                    key={event.id}
-                    className="p-4 bg-white rounded-lg shadow-md"
-                  >
-                    <p>
-                      <strong>Evento:</strong> {event.title}
-                    </p>
-                    <p>
-                      <strong>Data:</strong>{" "}
-                      {new Date(event.date).toLocaleDateString()}
-                    </p>
-                    <p>
-                      <strong>Local:</strong> {event.location}
-                    </p>
-                    <p>
-                      <strong>Quantia:</strong> R${" "}
-                      {artistData?.amount.toFixed(2)}
-                    </p>
-                    <p>
-                      <strong>Status de Pagamento:</strong>{" "}
-                      {artistData?.is_paid ? "Pago" : "Pendente"}
-                    </p>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="border rounded-lg overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Evento</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Local</TableHead>
+                    <TableHead>Quantia (R$)</TableHead>
+                    <TableHead>Status de Pagamento</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {events.map((event) => {
+                    const artistData = event.artists.find(
+                      (artist) => Number(artist.artist_id) === Number(user.id)
+                    );
+                    const amount =
+                      artistData?.amount != null
+                        ? Number(artistData.amount)
+                        : 0;
+                    return (
+                      <TableRow key={event.id}>
+                        <TableCell>{event.title}</TableCell>
+                        <TableCell>
+                          {new Date(event.date).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>{event.location}</TableCell>
+                        <TableCell>R$ {amount.toFixed(2)}</TableCell>
+                        <TableCell>
+                          {artistData?.is_paid ? "Pago" : "Pendente"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           ) : (
             <p className="text-neutral-700">
               Você ainda não participou de nenhum evento.

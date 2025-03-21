@@ -52,10 +52,7 @@ interface ArtistSelection {
 export default function NewEvent() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const { user, isAuthLoading } = useAuth() as {
-    user: { role: string } | null;
-    isAuthLoading: boolean;
-  };
+  const { user, isAuthLoading } = useAuth();
   const [artists, setArtists] = useState<Artist[]>([]);
   const [selectedArtists, setSelectedArtists] = useState<ArtistSelection[]>([]);
 
@@ -70,12 +67,15 @@ export default function NewEvent() {
     const fetchArtists = async () => {
       try {
         const token = localStorage.getItem("token");
-        const response = await axios.get("http://localhost:5000/api/artists", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await axios.get(
+          "http://localhost:5000/api/users/artists",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
         setArtists(response.data);
       } catch (error) {
-        toast.error("Erro ao carregar artistas");
+        toast.error("Erro ao carregar usuários artistas");
       } finally {
         setIsLoading(false);
       }
@@ -159,7 +159,7 @@ export default function NewEvent() {
   };
 
   if (isAuthLoading || isLoading) return <Loading />;
-  if (!user || !["admin", "secretary"].includes(user?.role)) return null;
+  if (!user || !["admin", "secretary"].includes(user.role)) return null;
 
   return (
     <div className="p-8">
