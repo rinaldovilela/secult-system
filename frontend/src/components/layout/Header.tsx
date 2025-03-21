@@ -28,6 +28,9 @@ export default function Header() {
 
   if (isAuthLoading) return null;
 
+  const isAdminOrSecretary = user && ["admin", "secretary"].includes(user.role);
+  const isArtistOrGroup = user && ["artist", "group"].includes(user.role);
+
   return (
     <header className="bg-neutral-900 text-white p-4">
       <div className="container mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -43,14 +46,58 @@ export default function Header() {
               <Button asChild variant="darkHeader" aria-label="Ver perfil">
                 <Link href="/profile">Meu Perfil</Link>
               </Button>
-              {user.role === "admin" && (
-                <Button
-                  asChild
-                  variant="darkHeader"
-                  aria-label="Cadastrar novo usuário"
-                >
-                  <Link href="/users/new">Cadastrar Usuário</Link>
-                </Button>
+              {isArtistOrGroup && (
+                <>
+                  <Button
+                    asChild
+                    variant="darkHeader"
+                    aria-label="Editar perfil"
+                  >
+                    <Link href="/profile/edit">Editar Perfil</Link>
+                  </Button>
+                  <Button
+                    asChild
+                    variant="darkHeader"
+                    aria-label="Ver meus eventos"
+                  >
+                    <Link href="/my-events">Meus Eventos</Link>
+                  </Button>
+                  <Button
+                    asChild
+                    variant="darkHeader"
+                    aria-label="Buscar eventos"
+                  >
+                    <Link href="/search">Buscar Eventos</Link>
+                  </Button>
+                </>
+              )}
+              {isAdminOrSecretary && (
+                <>
+                  <Button
+                    asChild
+                    variant="darkHeader"
+                    aria-label="Cadastrar novo usuário"
+                  >
+                    <Link href="/users/new">Cadastrar Usuário</Link>
+                  </Button>
+                  <Button
+                    asChild
+                    variant="darkHeader"
+                    aria-label="Cadastrar novo evento"
+                  >
+                    <Link href="/events/new">Cadastrar Evento</Link>
+                  </Button>
+                  <Button asChild variant="darkHeader" aria-label="Buscar">
+                    <Link href="/search">Buscar</Link>
+                  </Button>
+                  <Button
+                    asChild
+                    variant="darkHeader"
+                    aria-label="Ver relatórios"
+                  >
+                    <Link href="/reports">Relatórios</Link>
+                  </Button>
+                </>
               )}
               <Button
                 variant="darkHeader"
@@ -62,18 +109,9 @@ export default function Header() {
               </Button>
             </>
           ) : (
-            <>
-              <Button asChild variant="darkHeader" aria-label="Fazer login">
-                <Link href="/login">Login</Link>
-              </Button>
-              <Button
-                asChild
-                variant="darkHeader"
-                aria-label="Registrar-se no sistema"
-              >
-                <Link href="/register">Registrar</Link>
-              </Button>
-            </>
+            <Button asChild variant="darkHeader" aria-label="Fazer login">
+              <Link href="/login">Login</Link>
+            </Button>
           )}
         </div>
       </div>
