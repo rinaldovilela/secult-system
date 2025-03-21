@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { getUser } from "@/lib/auth";
 import axios from "axios";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,10 +15,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-// Adicione o componente Table do Shadcn UI
-// npx shadcn-ui@latest add table
-
 export default function Search() {
+  const router = useRouter();
+  const user = getUser();
+
+  useEffect(() => {
+    if (!user) {
+      router.push("/login");
+    }
+  }, [user, router]);
+
   const [artists, setArtists] = useState([]);
   const [events, setEvents] = useState([]);
   const [artistFilter, setArtistFilter] = useState("");
@@ -25,21 +33,28 @@ export default function Search() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        const token = localStorage.getItem("token");
         const artistsResponse = await axios.get(
-          "http://localhost:5000/api/artists"
+          "http://localhost:5000/api/artists",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
         );
         setArtists(artistsResponse.data);
 
         const eventsResponse = await axios.get(
-          "http://localhost:5000/api/events"
+          "http://localhost:5000/api/events",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
         );
         setEvents(eventsResponse.data);
       } catch (error) {
         console.error("Erro ao carregar dados:", error);
       }
     };
-    fetchData();
-  }, []);
+    if (user) fetchData();
+  }, [user]);
 
   const filteredArtists = artists.filter((artist: any) =>
     artist.name.toLowerCase().includes(artistFilter.toLowerCase())
@@ -48,6 +63,8 @@ export default function Search() {
   const filteredEvents = events.filter((event: any) =>
     event.title.toLowerCase().includes(eventFilter.toLowerCase())
   );
+
+  if (!user) return null;
 
   return (
     <div className="p-8">
@@ -86,7 +103,7 @@ export default function Search() {
                       href={artist.portfolioUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-primary-500 hover:underline"
+                      className="text-primary-500 hover:underline cursor-pointer"
                     >
                       Ver Portfólio
                     </a>

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { getUser } from "@/lib/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -17,7 +19,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 
-// Schema de validação com Zod
 const eventSchema = z.object({
   title: z.string().min(1, "Título é obrigatório"),
   date: z.string().min(1, "Data é obrigatória"),
@@ -29,6 +30,32 @@ const eventSchema = z.object({
 type EventForm = z.infer<typeof eventSchema>;
 
 export default function NewEvent() {
+  const router = useRouter();
+  const user = getUser();
+
+  useEffect(() => {
+    if (!user || !["admin", "secretary"].includes(user.role)) {
+      router.push("/login");
+    }
+  }, [user, router]);
+
+  const [artists, setArtists] = useState([]);
+
+  useEffect(() => {
+    const fetchArtists = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const response = await axios.get("http://localhost:5000/api/artists", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setArtists(response.data);
+      } catch (error) {
+        console.error("Erro ao carregar artistas:", error);
+      }
+    };
+    if (user) fetchArtists();
+  }, [user]);
+
   const form = useForm<EventForm>({
     resolver: zodResolver(eventSchema),
     defaultValues: {
@@ -40,26 +67,13 @@ export default function NewEvent() {
     },
   });
 
-  const [artists, setArtists] = useState([]);
-
-  useEffect(() => {
-    const fetchArtists = async () => {
-      try {
-        const response = await axios.get("http://localhost:5000/api/artists");
-        setArtists(response.data);
-      } catch (error) {
-        console.error("Erro ao carregar artistas:", error);
-      }
-    };
-    fetchArtists();
-  }, []);
-
   const onSubmit = async (data: EventForm) => {
     try {
+      const token = localStorage.getItem("token");
       const response = await axios.post(
         "http://localhost:5000/api/events",
         data,
-        { headers: { "Content-Type": "application/json" } }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       alert(`Evento cadastrado! ID: ${response.data.id}`);
       form.reset();
@@ -80,6 +94,8 @@ export default function NewEvent() {
       }
     }
   };
+
+  if (!user) return null;
 
   return (
     <div className="p-8">
