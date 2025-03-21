@@ -2,6 +2,9 @@ const express = require("express");
 const cors = require("cors");
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
+const eventRoutes = require("./routes/eventRoutes");
+const artistRoutes = require("./routes/artistRoutes");
+const searchRoutes = require("./routes/searchRoutes");
 const db = require("./config/db");
 
 const app = express();
@@ -16,7 +19,7 @@ app.use((req, res, next) => {
 app.use(
   cors({
     origin: "http://localhost:3000",
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
@@ -28,6 +31,9 @@ app.use(express.urlencoded({ extended: true }));
 // Rotas
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/events", eventRoutes);
+app.use("/api/artists", artistRoutes);
+app.use("/api/search", searchRoutes);
 
 // Middleware para tratar erros 404
 app.use((req, res, next) => {
