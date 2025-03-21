@@ -16,77 +16,53 @@ import {
 } from "@/components/ui/select";
 import Loading from "@/components/ui/loading";
 
-export default function NewUser() {
+export default function RegisterUser() {
   const router = useRouter();
   const { user, isAuthLoading } = useAuth();
-  const [isLoading, setIsLoading] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState(""); // Valor inicial vazio
-  const [profilePicture, setProfilePicture] = useState<File | null>(null);
-  const [portfolio, setPortfolio] = useState<File | null>(null);
-  const [video, setVideo] = useState<File | null>(null);
-  const [relatedFiles, setRelatedFiles] = useState<File | null>(null);
+  const [role, setRole] = useState("");
+  const [bio, setBio] = useState("");
+  const [areaOfExpertise, setAreaOfExpertise] = useState("");
+  const [profilePicture, setProfilePicture] = useState<string | null>(null);
+  const [portfolio, setPortfolio] = useState<string | null>(null);
+  const [video, setVideo] = useState<string | null>(null);
+  const [relatedFiles, setRelatedFiles] = useState<string | null>(null);
 
-  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB em bytes
-
-  const validateFileSize = (file: File | null, fieldName: string) => {
-    if (file && file.size > MAX_FILE_SIZE) {
-      toast.error(`O arquivo de ${fieldName} é muito grande. O limite é 50MB.`);
-      return false;
+  const handleFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setFile: (value: string | null) => void
+  ) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFile(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
-    return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-
-    // Validar o campo role
-    if (!role) {
-      toast.error("Por favor, selecione o tipo (Artista ou Grupo Cultural).");
-      setIsLoading(false);
-      return;
-    }
-
-    // Validar o tamanho dos arquivos
-    if (!validateFileSize(profilePicture, "foto de perfil")) {
-      setIsLoading(false);
-      return;
-    }
-    if (!validateFileSize(portfolio, "portfólio")) {
-      setIsLoading(false);
-      return;
-    }
-    if (!validateFileSize(video, "vídeo")) {
-      setIsLoading(false);
-      return;
-    }
-    if (!validateFileSize(relatedFiles, "arquivos relacionados")) {
-      setIsLoading(false);
-      return;
-    }
-
     try {
       const token = localStorage.getItem("token");
-      const formData = new FormData();
-      formData.append("name", name);
-      formData.append("email", email);
-      formData.append("password", password);
-      formData.append("role", role);
-      if (profilePicture) formData.append("profile_picture", profilePicture);
-      if (portfolio) formData.append("portfolio", portfolio);
-      if (video) formData.append("video", video);
-      if (relatedFiles) formData.append("related_files", relatedFiles);
-
-      await axios.post("http://localhost:5000/api/users", formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
-        },
+      const payload = {
+        name,
+        email,
+        password,
+        role,
+        bio,
+        area_of_expertise: areaOfExpertise,
+        profile_picture: profilePicture ? profilePicture.split(",")[1] : null,
+        portfolio: portfolio ? portfolio.split(",")[1] : null,
+        video: video ? video.split(",")[1] : null,
+        related_files: relatedFiles ? relatedFiles.split(",")[1] : null,
+      };
+      await axios.post("http://localhost:5000/api/users/register", payload, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-
       toast.success("Usuário cadastrado com sucesso!");
       router.push("/search");
     } catch (error) {
@@ -99,16 +75,11 @@ export default function NewUser() {
       } else {
         toast.error(`Erro ao cadastrar usuário: ${String(error)}`);
       }
-    } finally {
-      setIsLoading(false);
     }
   };
 
   if (isAuthLoading) return <Loading />;
-  if (!user || !["admin", "secretary"].includes(user.role)) {
-    router.push("/login");
-    return null;
-  }
+  if (!user || !["admin", "secretary"].includes(user.role)) return null;
 
   return (
     <div className="p-8">
@@ -165,47 +136,79 @@ export default function NewUser() {
         </div>
         <div>
           <label className="block text-sm font-medium text-neutral-700">
-            Foto de Perfil (máx. 50MB)
+            Biografia
+          </label>
+          <Input
+            type="text"
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-neutral-700">
+            Área de Atuação
+          </label>
+          <Input
+            type="text"
+            value={areaOfExpertise}
+            onChange={(e) => setAreaOfExpertise(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-neutral-700">
+            Foto de Perfil
           </label>
           <Input
             type="file"
             accept="image/*"
-            onChange={(e) => setProfilePicture(e.target.files?.[0] || null)}
+            onChange={(e) => handleFileChange(e, setProfilePicture)}
           />
+          {profilePicture && (
+            <img
+              src={profilePicture}
+              alt="Prévia da foto de perfil"
+              className="mt-2 h-32 w-32 object-cover"
+            />
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-neutral-700">
-            Portfólio (máx. 50MB)
+            Portfólio (PDF)
           </label>
           <Input
             type="file"
-            accept=".pdf,.doc,.docx"
-            onChange={(e) => setPortfolio(e.target.files?.[0] || null)}
+            accept=".pdf"
+            onChange={(e) => handleFileChange(e, setPortfolio)}
           />
         </div>
         <div>
           <label className="block text-sm font-medium text-neutral-700">
-            Vídeo (máx. 50MB)
+            Vídeo
           </label>
           <Input
             type="file"
             accept="video/*"
-            onChange={(e) => setVideo(e.target.files?.[0] || null)}
+            onChange={(e) => handleFileChange(e, setVideo)}
           />
+          {video && (
+            <video
+              src={video}
+              controls
+              className="mt-2 h-32 w-full object-cover"
+            />
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-neutral-700">
-            Arquivos Relacionados (máx. 50MB)
+            Arquivos Relacionados
           </label>
           <Input
             type="file"
-            onChange={(e) => setRelatedFiles(e.target.files?.[0] || null)}
+            onChange={(e) => handleFileChange(e, setRelatedFiles)}
           />
         </div>
         <div className="flex gap-4">
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? "Cadastrando..." : "Cadastrar"}
-          </Button>
+          <Button type="submit">Cadastrar</Button>
           <Button
             type="button"
             variant="outline"

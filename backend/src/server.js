@@ -11,7 +11,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/api", authRoutes);
-app.use("/api", artistRoutes);
+
 app.use("/api", eventRoutes);
 app.use("/api", userRoutes); // Adicione esta linha
 
