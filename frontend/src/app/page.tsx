@@ -6,12 +6,9 @@ import { useAuth } from "@/lib/useAuth";
 import Loading from "@/components/ui/loading";
 
 export default function Home() {
-  const { user, isAuthLoading } = useAuth() as {
-    user: { name: string; role: string } | null;
-    isAuthLoading: boolean;
-  }; // Usamos o objeto retornado por useAuth
+  const { user, isAuthLoading } = useAuth();
 
-  if (isAuthLoading) return <Loading />; // Mostra um componente de carregamento enquanto a autenticação está sendo verificada
+  if (isAuthLoading) return <Loading />;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-100">
@@ -40,6 +37,11 @@ export default function Home() {
                   <Button asChild variant="default">
                     <Link href="/events/new" className="w-full sm:w-auto">
                       Cadastrar Evento
+                    </Link>
+                  </Button>
+                  <Button asChild variant="default">
+                    <Link href="/reports" className="w-full sm:w-auto">
+                      Gerar Relatórios
                     </Link>
                   </Button>
                 </>
