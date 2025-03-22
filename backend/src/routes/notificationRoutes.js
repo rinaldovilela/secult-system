@@ -6,15 +6,22 @@ const { authenticateToken } = require("../middleware/auth");
 // GET /api/notifications - Listar notificações do usuário logado
 router.get("/", authenticateToken, async (req, res) => {
   try {
-    const [notifications] = await db.query(
-      `
+    const { unreadOnly } = req.query; // Novo query parameter
+
+    let query = `
       SELECT id, type, message, is_read, created_at
       FROM notifications
       WHERE user_id = ?
-      ORDER BY created_at DESC
-    `,
-      [req.user.id]
-    );
+    `;
+    const params = [req.user.id];
+
+    if (unreadOnly === "true") {
+      query += " AND is_read = FALSE";
+    }
+
+    query += " ORDER BY created_at DESC";
+
+    const [notifications] = await db.query(query, params);
 
     res.status(200).json(notifications);
   } catch (error) {
