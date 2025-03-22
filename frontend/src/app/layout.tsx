@@ -21,7 +21,7 @@ export default function RootLayout({
         className={`${inter.className} h-full bg-neutral-100 flex flex-col`}
       >
         <Header />
-        <main className="flex-1">{children}</main>
+        <main className="flex-1 mx-32">{children}</main>
         <Toaster position="top-right" />
       </body>
     </html>

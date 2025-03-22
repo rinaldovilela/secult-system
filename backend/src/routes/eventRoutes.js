@@ -343,4 +343,34 @@ router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/events/details/:id - Buscar detalhes completos de um evento (apenas admin ou secretary)
+router.get("/details/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar se o usuário tem permissão (admin ou secretary)
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    const [events] = await db.query(
+      `
+      SELECT id, title, date, description, location, created_at
+      FROM events
+      WHERE id = ?
+    `,
+      [id]
+    );
+
+    if (events.length === 0) {
+      return res.status(404).json({ error: "Evento não encontrado" });
+    }
+
+    res.status(200).json(events[0]);
+  } catch (error) {
+    console.error("Erro ao buscar detalhes do evento:", error);
+    res.status(500).json({ error: "Erro ao buscar detalhes do evento" });
+  }
+});
+
 module.exports = router;

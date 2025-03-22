@@ -69,7 +69,7 @@ export default function Search() {
   const isAdminOrSecretary = ["admin", "secretary"].includes(user.role);
 
   return (
-    <div>
+    <div className="mx-8">
       <h1 className="text-3xl font-bold mb-6 text-neutral-900">
         Busca de Eventos e Usuários
       </h1>
@@ -104,7 +104,7 @@ export default function Search() {
             {isLoading ? "Buscando..." : "Buscar"}
           </Button>
         </div>
-        <div className="text-sm text-neutral-600">
+        <div className="text-sm text-neutral-600 ml-8">
           <p>
             <strong>Dicas para facilitar sua busca:</strong>
           </p>

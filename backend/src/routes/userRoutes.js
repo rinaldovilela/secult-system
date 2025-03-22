@@ -32,6 +32,25 @@ const handleMulterError = (err, req, res, next) => {
   next(err);
 };
 
+router.get("/artists", authenticateToken, async (req, res) => {
+  try {
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+    const [users] = await db.query(
+      `
+      SELECT id, name, role
+      FROM users
+      WHERE role IN ('artist', 'group')
+    `
+    );
+    res.status(200).json(users);
+  } catch (error) {
+    console.error("Erro ao listar usuários artistas:", error);
+    res.status(500).json({ error: "Erro ao listar usuários artistas" });
+  }
+});
+
 // GET /api/users/me - Buscar detalhes do usuário logado
 router.get("/me", authenticateToken, async (req, res) => {
   try {
@@ -194,6 +213,126 @@ router.post(
     }
   }
 );
+
+// PUT /api/users/:id - Atualizar um usuário específico (apenas admin ou secretary)
+router.put(
+  "/:id",
+  authenticateToken,
+  upload.fields([
+    { name: "profile_picture", maxCount: 1 },
+    { name: "portfolio", maxCount: 1 },
+    { name: "video", maxCount: 1 },
+    { name: "related_files", maxCount: 1 },
+  ]),
+  handleMulterError,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, email, bio, area_of_expertise, role } = req.body;
+      const files = req.files;
+
+      // Verificar se o usuário tem permissão (admin ou secretary)
+      if (!["admin", "secretary"].includes(req.user.role)) {
+        return res.status(403).json({ error: "Acesso negado" });
+      }
+
+      // Validar campos obrigatórios
+      if (!name || !email || !role) {
+        return res.status(400).json({ error: "Campos obrigatórios ausentes" });
+      }
+
+      // Validar role
+      if (!["artist", "group"].includes(role)) {
+        return res
+          .status(400)
+          .json({ error: "Role inválido. Use 'artist' ou 'group'" });
+      }
+
+      // Verificar se o email já está em uso por outro usuário
+      const [existing] = await db.query(
+        "SELECT * FROM users WHERE email = ? AND id != ?",
+        [email, id]
+      );
+      if (existing.length > 0) {
+        return res.status(400).json({ error: "Email já está em uso" });
+      }
+
+      // Processar arquivos (se fornecidos)
+      const profilePicture = files?.profile_picture
+        ? files.profile_picture[0].buffer
+        : null;
+      const portfolio = files?.portfolio ? files.portfolio[0].buffer : null;
+      const video = files?.video ? files.video[0].buffer : null;
+      const relatedFiles = files?.related_files
+        ? files.related_files[0].buffer
+        : null;
+
+      // Atualizar o usuário no banco de dados
+      const [result] = await db.query(
+        `
+        UPDATE users
+        SET name = ?, email = ?, bio = ?, area_of_expertise = ?, role = ?,
+            profile_picture = COALESCE(?, profile_picture),
+            portfolio = COALESCE(?, portfolio),
+            video = COALESCE(?, video),
+            related_files = COALESCE(?, related_files)
+        WHERE id = ?
+      `,
+        [
+          name,
+          email,
+          bio,
+          area_of_expertise,
+          role,
+          profilePicture,
+          portfolio,
+          video,
+          relatedFiles,
+          id,
+        ]
+      );
+
+      // Verificar se o usuário foi encontrado e atualizado
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ error: "Usuário não encontrado" });
+      }
+
+      res.status(200).json({ message: "Usuário atualizado com sucesso" });
+    } catch (error) {
+      console.error("Erro ao atualizar usuário:", error);
+      res.status(500).json({ error: "Erro ao atualizar usuário" });
+    }
+  }
+);
+
+router.get("/details/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar se o usuário tem permissão (admin ou secretary)
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    const [users] = await db.query(
+      `
+      SELECT id, name, email, role, created_at, bio, area_of_expertise, profile_picture, portfolio, video, related_files
+      FROM users
+      WHERE id = ? AND role IN ('artist', 'group')
+    `,
+      [id]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    res.status(200).json(users[0]);
+  } catch (error) {
+    console.error("Erro ao buscar detalhes do usuário:", error);
+    res.status(500).json({ error: "Erro ao buscar detalhes do usuário" });
+  }
+});
 
 // GET /api/users/:id - Buscar detalhes de um usuário
 router.get("/:id", authenticateToken, async (req, res) => {

@@ -14,14 +14,18 @@ export default function EditUser() {
   const { id } = useParams();
   const { user, isAuthLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [bio, setBio] = useState("");
-  const [areaOfExpertise, setAreaOfExpertise] = useState("");
-  const [profilePicture, setProfilePicture] = useState<string | null>(null);
-  const [portfolio, setPortfolio] = useState<string | null>(null);
-  const [video, setVideo] = useState<string | null>(null);
-  const [relatedFiles, setRelatedFiles] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    bio: "",
+    areaOfExpertise: "",
+    role: "",
+    profilePicture: null as string | null,
+    portfolio: null as string | null,
+    video: null as string | null,
+    relatedFiles: null as string | null,
+  });
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -45,28 +49,25 @@ export default function EditUser() {
           }
         );
         const userData = response.data;
-        setName(userData.name);
-        setEmail(userData.email);
-        setBio(userData.bio || "");
-        setAreaOfExpertise(userData.area_of_expertise || "");
-        setProfilePicture(
-          userData.profile_picture
+        setFormData({
+          name: userData.name || "",
+          email: userData.email || "",
+          bio: userData.bio || "",
+          areaOfExpertise: userData.area_of_expertise || "",
+          role: userData.role || "",
+          profilePicture: userData.profile_picture
             ? `data:image/jpeg;base64,${userData.profile_picture}`
-            : null
-        );
-        setPortfolio(
-          userData.portfolio
+            : null,
+          portfolio: userData.portfolio
             ? `data:application/pdf;base64,${userData.portfolio}`
-            : null
-        );
-        setVideo(
-          userData.video ? `data:video/mp4;base64,${userData.video}` : null
-        );
-        setRelatedFiles(
-          userData.related_files
+            : null,
+          video: userData.video
+            ? `data:video/mp4;base64,${userData.video}`
+            : null,
+          relatedFiles: userData.related_files
             ? `data:application/octet-stream;base64,${userData.related_files}`
-            : null
-        );
+            : null,
+        });
       } catch (error) {
         if (axios.isAxiosError(error)) {
           toast.error(
@@ -85,15 +86,22 @@ export default function EditUser() {
     fetchUser();
   }, [id, user, isAuthLoading, router]);
 
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
-    setFile: (value: string | null) => void
+    field: keyof typeof formData
   ) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setFile(reader.result as string);
+        setFormData((prev) => ({ ...prev, [field]: reader.result as string }));
       };
       reader.readAsDataURL(file);
     }
@@ -101,17 +109,23 @@ export default function EditUser() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
       const token = localStorage.getItem("token");
       const payload = {
-        name,
-        email,
-        bio,
-        area_of_expertise: areaOfExpertise,
-        profile_picture: profilePicture ? profilePicture.split(",")[1] : null,
-        portfolio: portfolio ? portfolio.split(",")[1] : null,
-        video: video ? video.split(",")[1] : null,
-        related_files: relatedFiles ? relatedFiles.split(",")[1] : null,
+        name: formData.name,
+        email: formData.email,
+        bio: formData.bio,
+        area_of_expertise: formData.areaOfExpertise,
+        role: formData.role,
+        profile_picture: formData.profilePicture
+          ? formData.profilePicture.split(",")[1]
+          : null,
+        portfolio: formData.portfolio ? formData.portfolio.split(",")[1] : null,
+        video: formData.video ? formData.video.split(",")[1] : null,
+        related_files: formData.relatedFiles
+          ? formData.relatedFiles.split(",")[1]
+          : null,
       };
       await axios.put(`http://localhost:5000/api/users/${id}`, payload, {
         headers: { Authorization: `Bearer ${token}` },
@@ -128,6 +142,8 @@ export default function EditUser() {
       } else {
         toast.error(`Erro ao atualizar perfil: ${String(error)}`);
       }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -139,136 +155,200 @@ export default function EditUser() {
   )
     return null;
 
+  const isAdminOrSecretary = ["admin", "secretary"].includes(user.role);
+
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-6 text-neutral-900">
-        Editar Perfil
-      </h1>
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Nome
-          </label>
-          <Input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Email
-          </label>
-          <Input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Biografia
-          </label>
-          <Input
-            type="text"
-            value={bio}
-            onChange={(e) => setBio(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Área de Atuação
-          </label>
-          <Input
-            type="text"
-            value={areaOfExpertise}
-            onChange={(e) => setAreaOfExpertise(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Foto de Perfil
-          </label>
-          <Input
-            type="file"
-            accept="image/*"
-            onChange={(e) => handleFileChange(e, setProfilePicture)}
-          />
-          {profilePicture && (
-            <img
-              src={profilePicture}
-              alt="Foto de perfil"
-              className="mt-2 h-32 w-32 object-cover"
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-2xl w-full bg-white shadow-lg rounded-lg p-6 sm:p-8">
+        <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900">
+          Editar Perfil
+        </h1>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Nome */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Nome <span className="text-red-500">*</span>
+            </label>
+            <Input
+              type="text"
+              name="name"
+              value={formData.name}
+              onChange={handleInputChange}
+              required
+              className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
             />
-          )}
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Portfólio (PDF)
-          </label>
-          <Input
-            type="file"
-            accept=".pdf"
-            onChange={(e) => handleFileChange(e, setPortfolio)}
-          />
-          {portfolio && (
-            <a
-              href={portfolio}
-              download="portfolio.pdf"
-              className="mt-2 text-blue-500"
-            >
-              Baixar Portfólio
-            </a>
-          )}
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Vídeo
-          </label>
-          <Input
-            type="file"
-            accept="video/*"
-            onChange={(e) => handleFileChange(e, setVideo)}
-          />
-          {video && (
-            <video
-              src={video}
-              controls
-              className="mt-2 h-32 w-full object-cover"
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Email <span className="text-red-500">*</span>
+            </label>
+            <Input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleInputChange}
+              required
+              className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
             />
+          </div>
+
+          {/* Biografia */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Biografia
+            </label>
+            <Input
+              type="text"
+              name="bio"
+              value={formData.bio}
+              onChange={handleInputChange}
+              className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+            />
+          </div>
+
+          {/* Área de Atuação */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Área de Atuação
+            </label>
+            <Input
+              type="text"
+              name="areaOfExpertise"
+              value={formData.areaOfExpertise}
+              onChange={handleInputChange}
+              className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+            />
+          </div>
+
+          {/* Role (apenas para admin/secretary) */}
+          {isAdminOrSecretary && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Papel <span className="text-red-500">*</span>
+              </label>
+              <select
+                name="role"
+                value={formData.role}
+                onChange={handleInputChange}
+                required
+                className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2"
+              >
+                <option value="" disabled>
+                  Selecione um papel
+                </option>
+                <option value="artist">Artista</option>
+                <option value="group">Grupo</option>
+              </select>
+            </div>
           )}
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Arquivos Relacionados
-          </label>
-          <Input
-            type="file"
-            onChange={(e) => handleFileChange(e, setRelatedFiles)}
-          />
-          {relatedFiles && (
-            <a
-              href={relatedFiles}
-              download="related_files"
-              className="mt-2 text-blue-500"
+
+          {/* Foto de Perfil */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Foto de Perfil
+            </label>
+            <Input
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleFileChange(e, "profilePicture")}
+              className="mt-1 w-full"
+            />
+            {formData.profilePicture && (
+              <div className="mt-2">
+                <img
+                  src={formData.profilePicture}
+                  alt="Foto de perfil"
+                  className="h-32 w-32 object-cover rounded-full"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Portfólio */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Portfólio (PDF)
+            </label>
+            <Input
+              type="file"
+              accept=".pdf"
+              onChange={(e) => handleFileChange(e, "portfolio")}
+              className="mt-1 w-full"
+            />
+            {formData.portfolio && (
+              <a
+                href={formData.portfolio}
+                download="portfolio.pdf"
+                className="mt-2 inline-block text-indigo-600 hover:text-indigo-800"
+              >
+                Baixar Portfólio Atual
+              </a>
+            )}
+          </div>
+
+          {/* Vídeo */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Vídeo
+            </label>
+            <Input
+              type="file"
+              accept="video/*"
+              onChange={(e) => handleFileChange(e, "video")}
+              className="mt-1 w-full"
+            />
+            {formData.video && (
+              <video
+                src={formData.video}
+                controls
+                className="mt-2 w-full max-w-md rounded-md"
+              />
+            )}
+          </div>
+
+          {/* Arquivos Relacionados */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Arquivos Relacionados
+            </label>
+            <Input
+              type="file"
+              onChange={(e) => handleFileChange(e, "relatedFiles")}
+              className="mt-1 w-full"
+            />
+            {formData.relatedFiles && (
+              <a
+                href={formData.relatedFiles}
+                download="related_files"
+                className="mt-2 inline-block text-indigo-600 hover:text-indigo-800"
+              >
+                Baixar Arquivos Relacionados Atuais
+              </a>
+            )}
+          </div>
+
+          {/* Botões */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white"
             >
-              Baixar Arquivos Relacionados
-            </a>
-          )}
-        </div>
-        <div className="flex gap-4">
-          <Button type="submit">Salvar</Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => router.push("/search")}
-          >
-            Cancelar
-          </Button>
-        </div>
-      </form>
+              {isSubmitting ? "Salvando..." : "Salvar"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => router.push("/search")}
+              className="w-full sm:w-auto border-gray-300 text-gray-700 hover:bg-gray-100"
+            >
+              Cancelar
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
