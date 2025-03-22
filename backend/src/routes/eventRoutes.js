@@ -4,6 +4,21 @@ const { authenticateToken, authorizeRole } = require("../middleware/auth");
 
 const router = express.Router();
 
+// Função auxiliar para criar uma notificação
+const createNotification = async (userId, type, message) => {
+  try {
+    await db.query(
+      `
+      INSERT INTO notifications (user_id, type, message, is_read, created_at)
+      VALUES (?, ?, ?, ?, NOW())
+    `,
+      [userId, type, message, false]
+    );
+  } catch (error) {
+    console.error("Erro ao criar notificação:", error);
+  }
+};
+
 // POST /api/events - Cadastro de eventos (apenas admin e secretary podem cadastrar)
 router.post("/", authenticateToken, async (req, res) => {
   try {
@@ -42,13 +57,20 @@ router.post("/", authenticateToken, async (req, res) => {
 
     const eventId = result.insertId;
 
-    // Adicionar os artistas ao evento
+    // Adicionar os artistas ao evento e criar notificações
     if (artists && artists.length > 0) {
       for (const artist of artists) {
         const { artist_id, amount } = artist;
         await db.query(
           "INSERT INTO event_artists (event_id, user_id, amount, is_paid) VALUES (?, ?, ?, ?)",
           [eventId, artist_id, amount, false]
+        );
+
+        // Criar notificação para o artista
+        await createNotification(
+          artist_id,
+          "new_event",
+          `Você foi adicionado ao evento '${title}' agendado para ${new Date(date).toLocaleDateString()}.`
         );
       }
     }
@@ -218,6 +240,8 @@ router.post("/:id/artists", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "Evento não encontrado" });
     }
 
+    const event = events[0];
+
     // Verificar se o artista existe
     const [artists] = await db.query(
       "SELECT * FROM users WHERE id = ? AND role = 'artist'",
@@ -242,6 +266,13 @@ router.post("/:id/artists", authenticateToken, async (req, res) => {
     await db.query(
       "INSERT INTO event_artists (event_id, user_id, amount, is_paid) VALUES (?, ?, ?, ?)",
       [id, artist_id, amount, false]
+    );
+
+    // Criar notificação para o artista
+    await createNotification(
+      artist_id,
+      "new_event",
+      `Você foi adicionado ao evento '${event.title}' agendado para ${new Date(event.date).toLocaleDateString()}.`
     );
 
     res
@@ -317,6 +348,8 @@ router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "Evento não encontrado" });
     }
 
+    const event = events[0];
+
     // Verificar se o artista está associado ao evento
     const [existing] = await db.query(
       "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
@@ -332,6 +365,13 @@ router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
     await db.query(
       "UPDATE event_artists SET is_paid = ? WHERE event_id = ? AND user_id = ?",
       [is_paid, id, artistId]
+    );
+
+    // Criar notificação para o artista
+    await createNotification(
+      artistId,
+      "payment_status_updated",
+      `O status de pagamento do evento '${event.title}' foi atualizado para ${is_paid ? "Pago" : "Pendente"}.`
     );
 
     res

@@ -135,6 +135,9 @@ export default function Profile() {
                       <Link href="/my-events">Ver Meus Eventos</Link>
                     </Button>
                   )}
+                  <Button asChild variant="outline">
+                    <Link href="/notifications">Ver Notificações</Link>
+                  </Button>
                 </div>
               </div>
 
