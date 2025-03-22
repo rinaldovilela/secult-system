@@ -78,7 +78,7 @@ export default function Profile() {
   if (!user || !profile) return null;
 
   const getProfilePictureSrc = (picture: string | null) => {
-    if (!picture) return null;
+    if (!picture) return undefined;
     if (typeof picture === "string") return picture;
     return `data:image/jpeg;base64,${Buffer.from(picture).toString("base64")}`;
   };
