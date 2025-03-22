@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import Loading from "@/components/ui/loading";
-import { getToken } from "@/lib/auth"; // Importar getToken
+import { getToken } from "@/lib/auth";
+import { User, FileText, Image } from "lucide-react";
 
 export default function EditProfile() {
   const router = useRouter();
@@ -35,13 +36,10 @@ export default function EditProfile() {
     try {
       const token = getToken();
       if (!token) {
-        console.error("Token não encontrado no localStorage");
         toast.error("Sessão expirada. Faça login novamente.");
         router.push("/login");
         return;
       }
-
-      console.log("Token enviado na requisição:", token); // Log para depuração
 
       const formData = new FormData();
       formData.append("name", name);
@@ -49,26 +47,17 @@ export default function EditProfile() {
       formData.append("area_of_expertise", areaOfExpertise);
       if (profilePicture) formData.append("profile_picture", profilePicture);
 
-      const response = await axios.put(
-        "http://localhost:5000/api/users/me",
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
+      await axios.put("http://localhost:5000/api/users/me", formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
 
-      console.log("Resposta do endpoint PUT /api/users/me:", response.data); // Log para depuração
       toast.success("Perfil atualizado com sucesso!");
       router.push("/profile");
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        console.error(
-          "Erro na requisição para PUT /api/users/me:",
-          error.response?.data || error.message
-        ); // Log para depuração
         toast.error(
           `Erro ao atualizar perfil: ${
             error.response?.data?.error || error.message
@@ -78,7 +67,6 @@ export default function EditProfile() {
           router.push("/login");
         }
       } else {
-        console.error("Erro desconhecido ao atualizar perfil:", error); // Log para depuração
         toast.error(`Erro ao atualizar perfil: ${String(error)}`);
       }
     } finally {
@@ -93,61 +81,81 @@ export default function EditProfile() {
   }
 
   return (
-    <div>
-      <h1 className="text-3xl font-bold mb-6 text-neutral-900">
-        Editar Perfil
-      </h1>
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Nome
-          </label>
-          <Input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
+    <div className="min-h-screen bg-gray-100 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white shadow-lg rounded-lg p-6 sm:p-8">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900">
+            Editar Perfil
+          </h1>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <User className="w-5 h-5 text-indigo-600" />
+                Nome
+              </label>
+              <Input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <FileText className="w-5 h-5 text-indigo-600" />
+                Biografia
+              </label>
+              <Textarea
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <FileText className="w-5 h-5 text-indigo-600" />
+                Área de Atuação
+              </label>
+              <Input
+                type="text"
+                value={areaOfExpertise}
+                onChange={(e) => setAreaOfExpertise(e.target.value)}
+                className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <Image className="w-5 h-5 text-indigo-600" />
+                Foto de Perfil (máx. 50MB)
+              </label>
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setProfilePicture(e.target.files?.[0] || null)}
+                className="mt-1 w-full"
+              />
+            </div>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Button
+                type="submit"
+                disabled={isLoading}
+                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                {isLoading ? "Salvando..." : "Salvar"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => router.push("/profile")}
+                className="w-full sm:w-auto border-gray-300 text-gray-700 hover:bg-gray-100"
+              >
+                Cancelar
+              </Button>
+            </div>
+          </form>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Biografia
-          </label>
-          <Textarea value={bio} onChange={(e) => setBio(e.target.value)} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Área de Atuação
-          </label>
-          <Input
-            type="text"
-            value={areaOfExpertise}
-            onChange={(e) => setAreaOfExpertise(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Foto de Perfil (máx. 50MB)
-          </label>
-          <Input
-            type="file"
-            accept="image/*"
-            onChange={(e) => setProfilePicture(e.target.files?.[0] || null)}
-          />
-        </div>
-        <div className="flex gap-4">
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? "Salvando..." : "Salvar"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => router.push("/profile")}
-          >
-            Cancelar
-          </Button>
-        </div>
-      </form>
+      </div>
     </div>
   );
 }

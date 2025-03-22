@@ -8,6 +8,8 @@ interface DecodedToken {
 }
 
 export interface User {
+  bio: string;
+  area_of_expertise: string;
   id: number;
   name: string;
   role: string;

@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Loading from "@/components/ui/loading";
+import { Calendar, MapPin, Users, FileText, DollarSign } from "lucide-react";
 
 interface Artist {
   id: number;
@@ -128,14 +129,9 @@ export default function NewEvent() {
           amount: ea.amount,
         })),
       };
-      console.log("Dados enviados no POST:", payload);
-      const response = await axios.post(
-        "http://localhost:5000/api/events",
-        payload,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      await axios.post("http://localhost:5000/api/events", payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       toast.success("Evento criado com sucesso!");
       router.push("/search");
     } catch (error) {
@@ -155,145 +151,174 @@ export default function NewEvent() {
   if (!user || !["admin", "secretary"].includes(user.role)) return null;
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-6 text-neutral-900">
-        Criar Novo Evento
-      </h1>
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Título
-          </label>
-          <Input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Descrição
-          </label>
-          <Input
-            type="text"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Data
-          </label>
-          <Input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Local
-          </label>
-          <Input
-            type="text"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Público-Alvo
-          </label>
-          <Select onValueChange={setTargetAudience} value={targetAudience}>
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione o público-alvo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Geral">Geral</SelectItem>
-              <SelectItem value="Infantil">Infantil</SelectItem>
-              <SelectItem value="Adulto">Adulto</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Seção para adicionar artistas */}
-        <div>
-          <h2 className="text-2xl font-semibold mb-4 text-neutral-900">
-            Artistas
-          </h2>
-          <div className="flex flex-col sm:flex-row gap-4 mb-4">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-neutral-700">
-                Artista
+    <div className="min-h-screen bg-gray-100 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto">
+        <div className="bg-white shadow-lg rounded-lg p-6 sm:p-8">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900">
+            Criar Novo Evento
+          </h1>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <FileText className="w-5 h-5 text-indigo-600" />
+                Título
               </label>
-              <Select
-                onValueChange={setSelectedArtistId}
-                value={selectedArtistId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um artista" />
+              <Input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <FileText className="w-5 h-5 text-indigo-600" />
+                Descrição
+              </label>
+              <Input
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <Calendar className="w-5 h-5 text-indigo-600" />
+                Data
+              </label>
+              <Input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+                className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <MapPin className="w-5 h-5 text-indigo-600" />
+                Local
+              </label>
+              <Input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                required
+                className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <Users className="w-5 h-5 text-indigo-600" />
+                Público-Alvo
+              </label>
+              <Select onValueChange={setTargetAudience} value={targetAudience}>
+                <SelectTrigger className="mt-1 w-full">
+                  <SelectValue placeholder="Selecione o público-alvo" />
                 </SelectTrigger>
                 <SelectContent>
-                  {artists.map((artist) => (
-                    <SelectItem key={artist.id} value={artist.id.toString()}>
-                      {artist.name}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="Geral">Geral</SelectItem>
+                  <SelectItem value="Infantil">Infantil</SelectItem>
+                  <SelectItem value="Adulto">Adulto</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-neutral-700">
-                Quantia (R$)
-              </label>
-              <Input
-                type="number"
-                value={artistAmount}
-                onChange={(e) => setArtistAmount(e.target.value)}
-                placeholder="Digite o valor"
-              />
+
+            {/* Seção para adicionar artistas */}
+            <div className="bg-gray-50 p-6 rounded-lg shadow-sm">
+              <h2 className="text-xl font-semibold mb-4 text-gray-900">
+                Artistas
+              </h2>
+              <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Artista
+                  </label>
+                  <Select
+                    onValueChange={setSelectedArtistId}
+                    value={selectedArtistId}
+                  >
+                    <SelectTrigger className="mt-1 w-full">
+                      <SelectValue placeholder="Selecione um artista" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {artists.map((artist) => (
+                        <SelectItem
+                          key={artist.id}
+                          value={artist.id.toString()}
+                        >
+                          {artist.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <DollarSign className="w-5 h-5 text-indigo-600" />
+                    Quantia (R$)
+                  </label>
+                  <Input
+                    type="number"
+                    value={artistAmount}
+                    onChange={(e) => setArtistAmount(e.target.value)}
+                    placeholder="Digite o valor"
+                    className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button type="button" onClick={handleAddArtist}>
+                    Adicionar
+                  </Button>
+                </div>
+              </div>
+
+              {eventArtists.length > 0 ? (
+                <ul className="list-disc list-inside space-y-2">
+                  {eventArtists.map((ea) => (
+                    <li
+                      key={ea.artist_id}
+                      className="flex justify-between items-center"
+                    >
+                      <span>
+                        {ea.artist_name} - R$ {ea.amount.toFixed(2)}
+                      </span>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleRemoveArtist(ea.artist_id)}
+                      >
+                        Remover
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-gray-600">Nenhum artista adicionado.</p>
+              )}
             </div>
-            <div className="flex items-end">
-              <Button type="button" onClick={handleAddArtist}>
-                Adicionar
+
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Button
+                type="submit"
+                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                Criar Evento
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => router.push("/search")}
+                className="w-full sm:w-auto border-gray-300 text-gray-700 hover:bg-gray-100"
+              >
+                Cancelar
               </Button>
             </div>
-          </div>
-
-          {eventArtists.length > 0 ? (
-            <ul className="list-disc list-inside">
-              {eventArtists.map((ea) => (
-                <li key={ea.artist_id}>
-                  {ea.artist_name} - R$ {ea.amount.toFixed(2)}{" "}
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleRemoveArtist(ea.artist_id)}
-                  >
-                    Remover
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-neutral-700">Nenhum artista adicionado.</p>
-          )}
+          </form>
         </div>
-
-        <div className="flex gap-4">
-          <Button type="submit">Criar Evento</Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => router.push("/search")}
-          >
-            Cancelar
-          </Button>
-        </div>
-      </form>
+      </div>
     </div>
   );
 }

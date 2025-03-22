@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Loading from "@/components/ui/loading";
 import { getToken } from "@/lib/auth";
+import { User, Mail, FileText, Calendar } from "lucide-react";
 
 interface UserProfile {
   id: number;
@@ -17,7 +18,7 @@ interface UserProfile {
   role: string;
   bio?: string;
   area_of_expertise?: string;
-  profile_picture?: string | null; // Pode ser uma URL ou base64
+  profile_picture?: string | null;
 }
 
 export default function Profile() {
@@ -30,7 +31,6 @@ export default function Profile() {
     if (isAuthLoading) return;
 
     if (!user) {
-      console.log("Usuário não autenticado, redirecionando para /login");
       router.push("/login");
       return;
     }
@@ -39,47 +39,31 @@ export default function Profile() {
       try {
         const token = getToken();
         if (!token) {
-          console.error("Token não encontrado no localStorage");
           toast.error("Sessão expirada. Faça login novamente.");
           router.push("/login");
           return;
         }
 
-        console.log("Token enviado na requisição:", token);
-
         const response = await axios.get("http://localhost:5000/api/users/me", {
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        console.log("Resposta do endpoint /api/users/me:", response.data);
         setProfile(response.data);
       } catch (error) {
         if (axios.isAxiosError(error)) {
-          console.error(
-            "Erro na requisição para /api/users/me:",
-            error.response?.data || error.message
-          );
           toast.error(
             `Erro ao carregar perfil: ${
               error.response?.data?.error || error.message
             }`
           );
-          if (error.response?.status === 401) {
-            console.log(
-              "Erro de autenticação (401), redirecionando para /login"
-            );
-            router.push("/login");
-          } else if (error.response?.status === 403) {
-            console.log("Acesso negado (403), redirecionando para /login");
-            router.push("/login");
-          } else if (error.response?.status === 404) {
-            console.log(
-              "Usuário não encontrado (404), redirecionando para /login"
-            );
+          if (
+            error.response?.status === 401 ||
+            error.response?.status === 403 ||
+            error.response?.status === 404
+          ) {
             router.push("/login");
           }
         } else {
-          console.error("Erro desconhecido ao carregar perfil:", error);
           toast.error(`Erro ao carregar perfil: ${String(error)}`);
         }
       } finally {
@@ -93,74 +77,134 @@ export default function Profile() {
   if (isAuthLoading || isLoading) return <Loading />;
   if (!user || !profile) return null;
 
+  const getProfilePictureSrc = (picture: string | null) => {
+    if (!picture) return null;
+    if (typeof picture === "string") return picture;
+    return `data:image/jpeg;base64,${Buffer.from(picture).toString("base64")}`;
+  };
+
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-6 text-neutral-900">
-        Meu Perfil - {profile.name}
-      </h1>
-      <div className="space-y-8">
-        {/* Detalhes do Perfil */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-2xl font-semibold mb-4 text-neutral-900">
-            Informações do Perfil
-          </h2>
-          <div className="space-y-4">
-            {profile.profile_picture ? (
-              <div className="flex justify-center">
-                <img
-                  src={
-                    typeof profile.profile_picture === "string"
-                      ? profile.profile_picture
-                      : `data:image/jpeg;base64,${Buffer.from(
-                          profile.profile_picture
-                        ).toString("base64")}`
-                  }
-                  alt="Foto de Perfil"
-                  className="w-32 h-32 rounded-full object-cover"
-                />
-              </div>
-            ) : (
-              <div className="flex justify-center">
-                <div className="w-32 h-32 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
-                  Sem foto
+    <div className="min-h-screen bg-gray-100 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-white shadow-lg rounded-lg overflow-hidden">
+          {/* Cabeçalho */}
+          <div className="bg-indigo-600 p-6 text-white">
+            <h1 className="text-2xl sm:text-3xl font-bold">
+              Meu Perfil - {profile.name}
+            </h1>
+            <p className="mt-1 text-indigo-100 capitalize">
+              {profile.role === "artist"
+                ? "Artista"
+                : profile.role === "group"
+                ? "Grupo Cultural"
+                : profile.role === "admin"
+                ? "Administrador"
+                : "Secretário"}
+            </p>
+          </div>
+
+          {/* Conteúdo Principal */}
+          <div className="p-6 sm:p-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Foto de Perfil e Botões */}
+              <div className="flex flex-col items-center">
+                {profile.profile_picture ? (
+                  <img
+                    src={getProfilePictureSrc(profile.profile_picture)}
+                    alt="Foto de Perfil"
+                    className="w-32 h-32 rounded-full object-cover mb-4"
+                  />
+                ) : (
+                  <div className="w-32 h-32 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 mb-4">
+                    Sem foto
+                  </div>
+                )}
+                <div className="flex flex-col gap-3 w-full">
+                  <Button
+                    asChild
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    <Link href="/profile/edit">Editar Perfil</Link>
+                  </Button>
+                  {["artist", "group"].includes(profile.role) && (
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="w-full border-gray-300 text-gray-700 hover:bg-gray-100"
+                    >
+                      <Link href="/my-events">Ver Meus Eventos</Link>
+                    </Button>
+                  )}
                 </div>
               </div>
-            )}
-            <div>
-              <p className="text-neutral-700">
-                <strong>Nome:</strong> {profile.name}
-              </p>
-              <p className="text-neutral-700">
-                <strong>Email:</strong> {profile.email}
-              </p>
-              <p className="text-neutral-700">
-                <strong>Tipo:</strong>{" "}
-                {profile.role === "artist"
-                  ? "Artista"
-                  : profile.role === "group"
-                  ? "Grupo Cultural"
-                  : profile.role === "admin"
-                  ? "Administrador"
-                  : "Secretário"}
-              </p>
-              <p className="text-neutral-700">
-                <strong>Biografia:</strong>{" "}
-                {profile.bio || "Nenhuma biografia disponível."}
-              </p>
-              <p className="text-neutral-700">
-                <strong>Área de Atuação:</strong>{" "}
-                {profile.area_of_expertise || "Não especificada."}
-              </p>
-            </div>
-            <div className="flex gap-4">
-              <Button asChild>
-                <Link href="/profile/edit">Editar Perfil</Link>
-              </Button>
-              {["artist", "group"].includes(profile.role) && (
-                <Button asChild variant="outline">
-                  <Link href="/my-events">Ver Meus Eventos</Link>
-                </Button>
-              )}
+
+              {/* Informações do Perfil */}
+              <div className="lg:col-span-2">
+                <div className="bg-gray-50 p-6 rounded-lg shadow-sm">
+                  <h2 className="text-xl font-semibold mb-4 text-gray-900">
+                    Informações do Perfil
+                  </h2>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <User className="w-5 h-5 text-indigo-600" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">
+                          Nome
+                        </p>
+                        <p className="text-gray-900">{profile.name}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-5 h-5 text-indigo-600" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">
+                          Email
+                        </p>
+                        <p className="text-gray-900">{profile.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <User className="w-5 h-5 text-indigo-600" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">
+                          Tipo
+                        </p>
+                        <p className="text-gray-900 capitalize">
+                          {profile.role === "artist"
+                            ? "Artista"
+                            : profile.role === "group"
+                            ? "Grupo Cultural"
+                            : profile.role === "admin"
+                            ? "Administrador"
+                            : "Secretário"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-indigo-600" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">
+                          Biografia
+                        </p>
+                        <p className="text-gray-900">
+                          {profile.bio || "Nenhuma biografia disponível."}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-indigo-600" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">
+                          Área de Atuação
+                        </p>
+                        <p className="text-gray-900">
+                          {profile.area_of_expertise || "Não especificada."}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
