@@ -43,12 +43,12 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
 
     const token = getToken();
     if (!token) {
-      console.error("Token não encontrado para WebSocket");
+      console.error("[SocketContext] Token não encontrado para WebSocket");
       return;
     }
 
     const newSocket = io("http://localhost:5000", {
-      auth: { token }, // Enviar o token JWT
+      auth: { token },
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
@@ -57,21 +57,28 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
     setSocket(newSocket);
 
     newSocket.on("connect", () => {
-      console.log("WebSocket conectado com sucesso!");
+      console.log("[SocketContext] WebSocket conectado com sucesso!");
     });
 
     newSocket.on("new_notification", (notification: Notification) => {
-      if (notification.user_id === parseInt(user.id)) {
-        console.log("Nova notificação recebida:", notification);
+      console.log("[SocketContext] Nova notificação recebida:", notification);
+      if (notification.user_id === parseInt(String(user.id))) {
         setNotifications((prev) => [notification, ...prev]);
         if (!notification.is_read) {
           setUnreadCount((prev) => prev + 1);
         }
+      } else {
+        console.log(
+          `[SocketContext] Notificação ignorada: user_id ${notification.user_id} não corresponde ao usuário logado ${user.id}`
+        );
       }
     });
 
     newSocket.on("connect_error", (error) => {
-      console.error("Erro ao conectar ao WebSocket:", error.message);
+      console.error(
+        "[SocketContext] Erro ao conectar ao WebSocket:",
+        error.message
+      );
     });
 
     return () => {
@@ -102,7 +109,10 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
         setNotifications(data);
         setUnreadCount(data.filter((n) => !n.is_read).length);
       } catch (error) {
-        console.error("Erro ao carregar notificações iniciais:", error);
+        console.error(
+          "[SocketContext] Erro ao carregar notificações iniciais:",
+          error
+        );
       }
     };
 

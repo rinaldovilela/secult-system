@@ -7,6 +7,10 @@ const router = express.Router();
 // Função auxiliar para criar uma notificação e emitir evento WebSocket
 const createNotification = async (req, userId, type, message) => {
   try {
+    console.log(
+      `[createNotification] Criando notificação para userId: ${userId}, tipo: ${type}`
+    );
+
     const [result] = await db.query(
       `
       INSERT INTO notifications (user_id, type, message, is_read, created_at)
@@ -24,11 +28,24 @@ const createNotification = async (req, userId, type, message) => {
       created_at: new Date().toISOString(),
     };
 
-    // Emitir evento WebSocket para o usuário específico
     const io = req.app.get("io");
+    if (!io) {
+      console.error(
+        "[createNotification] Erro: io não está definido no req.app"
+      );
+      return;
+    }
+
+    console.log(
+      `[createNotification] Emitindo notificação para userId: ${userId}`,
+      notification
+    );
     io.to(userId.toString()).emit("new_notification", notification);
   } catch (error) {
-    console.error("Erro ao criar notificação:", error);
+    console.error(
+      `[createNotification] Erro ao criar notificação para userId: ${userId}`,
+      error
+    );
   }
 };
 
@@ -340,6 +357,7 @@ router.delete("/:id/artists/:artistId", authenticateToken, async (req, res) => {
 });
 
 // PATCH /api/events/:id/artists/:artistId - Atualizar o status de pagamento de um artista
+// PATCH /api/events/:id/artists/:artistId
 router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
   try {
     const { id, artistId } = req.params;
@@ -382,10 +400,16 @@ router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
       [is_paid, id, artistId]
     );
 
+    // Converter artistId para número
+    const artistIdNumber = parseInt(artistId);
+
     // Criar notificação para o artista
+    console.log(
+      `[PATCH /events/:id/artists/:artistId] Gerando notificação para artistId: ${artistIdNumber}`
+    );
     await createNotification(
       req,
-      artistId,
+      artistIdNumber, // Usar o número convertido
       "payment_status_updated",
       `O status de pagamento do evento '${event.title}' foi atualizado para ${is_paid ? "Pago" : "Pendente"}.`
     );
@@ -394,11 +418,13 @@ router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
       .status(200)
       .json({ message: "Status de pagamento atualizado com sucesso" });
   } catch (error) {
-    console.error("Erro ao atualizar status de pagamento:", error);
+    console.error(
+      "[PATCH /events/:id/artists/:artistId] Erro ao atualizar status de pagamento:",
+      error
+    );
     res.status(500).json({ error: "Erro ao atualizar status de pagamento" });
   }
 });
-
 // GET /api/events/details/:id - Buscar detalhes completos de um evento (apenas admin ou secretary)
 router.get("/details/:id", authenticateToken, async (req, res) => {
   try {
