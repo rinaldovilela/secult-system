@@ -241,9 +241,9 @@ export default function Header() {
                   unreadCount > 0 ? `, ${unreadCount} não lidas` : ""
                 }`}
               >
-                <Bell className="w-6 h-6" />
+                <Bell className="w-7 h-7" />
                 {unreadCount > 0 && (
-                  <Badge className="absolute -top-1 -right-1 bg-red-500 text-white text-xs">
+                  <Badge className="absolute -top-1 -right-1 bg-red-500 text-white text-xs h-5 w-5">
                     {unreadCount}
                   </Badge>
                 )}
