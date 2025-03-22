@@ -54,27 +54,26 @@ router.get("/artists", authenticateToken, async (req, res) => {
 // GET /api/users/me - Buscar detalhes do usuário logado
 router.get("/me", authenticateToken, async (req, res) => {
   try {
-    console.log("Executando GET /api/users/me para user ID:", req.user.id);
     const [users] = await db.query(
-      `
-      SELECT id, name, email, role, bio, area_of_expertise, profile_picture
-      FROM users
-      WHERE id = ?
-    `,
+      "SELECT id, name, email, role, profile_picture FROM users WHERE id = ?",
       [req.user.id]
     );
 
-    console.log("Resultado da query:", users);
-
     if (users.length === 0) {
-      console.log("Usuário não encontrado para ID:", req.user.id);
       return res.status(404).json({ error: "Usuário não encontrado" });
     }
 
-    res.status(200).json(users[0]);
+    const user = users[0];
+    if (user.profile_picture) {
+      user.profile_picture = Buffer.from(user.profile_picture).toString(
+        "base64"
+      );
+    }
+
+    res.status(200).json(user);
   } catch (error) {
-    console.error("Erro ao buscar perfil do usuário:", error);
-    res.status(500).json({ error: "Erro ao buscar perfil do usuário" });
+    console.error("Erro ao buscar usuário:", error);
+    res.status(500).json({ error: "Erro ao buscar usuário" });
   }
 });
 

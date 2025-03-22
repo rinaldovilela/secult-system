@@ -34,33 +34,50 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+import toast from "react-hot-toast";
+
+interface User {
+  name: string;
+  role: string;
+  profile_picture?: string;
+}
 
 export default function Header() {
   const { user: authUser, isAuthLoading } = useAuth();
   const router = useRouter();
-  interface User {
-    name: string;
-    role: string;
-    profile_picture?: string | ArrayBuffer;
-  }
 
-  const [user, setUser] = useState<User | null>(null); // Estado local para dados completos
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState<number>(0);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchUserProfile = async () => {
     try {
       const token = getToken();
-      if (!token) return;
+      if (!token) {
+        throw new Error("Token não encontrado. Faça login novamente.");
+      }
 
       const response = await axios.get("http://localhost:5000/api/users/me", {
         headers: { Authorization: `Bearer ${token}` },
       });
       setUser(response.data);
     } catch (error) {
-      console.error("Erro ao buscar perfil do usuário:", error);
+      const errorMessage = axios.isAxiosError(error)
+        ? `Erro ao buscar perfil do usuário: ${
+            error.response?.data?.error || error.message
+          }`
+        : `Erro ao buscar perfil do usuário: ${String(error)}`;
+      setError(errorMessage);
+      toast.error(errorMessage);
+      if (
+        axios.isAxiosError(error) &&
+        (error.response?.status === 401 || error.response?.status === 403)
+      ) {
+        router.push("/login");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -104,18 +121,35 @@ export default function Header() {
   };
 
   if (isAuthLoading || isLoading) return null;
+  if (error) {
+    return (
+      <header className="bg-indigo-800 text-white shadow-md">
+        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <Link href="/">
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight hover:text-indigo-200 transition-colors">
+              Secult System
+            </h2>
+          </Link>
+          <Button
+            variant="ghost"
+            onClick={handleLogout}
+            className="text-white hover:bg-indigo-700"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Sair
+          </Button>
+        </div>
+      </header>
+    );
+  }
 
   const isAdminOrSecretary = user && ["admin", "secretary"].includes(user.role);
   const isArtistOrGroup = user && ["artist", "group"].includes(user.role);
 
   const profilePictureUrl = user?.profile_picture
-    ? typeof user.profile_picture === "string"
-      ? user.profile_picture.startsWith("data:image")
-        ? user.profile_picture
-        : `data:image/jpeg;base64,${user.profile_picture}`
-      : `data:image/jpeg;base64,${Buffer.from(user.profile_picture).toString(
-          "base64"
-        )}`
+    ? user.profile_picture.startsWith("data:image")
+      ? user.profile_picture
+      : `data:image/jpeg;base64,${user.profile_picture}`
     : undefined;
 
   return (
@@ -212,7 +246,11 @@ export default function Header() {
               <Link
                 href="/notifications"
                 className="relative text-white hover:text-indigo-200"
-                aria-label="Notificações"
+                aria-label={`Notificações${
+                  unreadNotifications > 0
+                    ? `, ${unreadNotifications} não lidas`
+                    : ""
+                }`}
               >
                 <Bell className="w-6 h-6" />
                 {!isLoadingNotifications && unreadNotifications > 0 && (
