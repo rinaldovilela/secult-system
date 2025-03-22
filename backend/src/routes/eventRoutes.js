@@ -250,6 +250,7 @@ router.put("/:id", authenticateToken, async (req, res) => {
 });
 
 // POST /api/events/:id/artists - Adicionar um artista a um evento
+// POST /api/events/:id/artists - Adicionar um artista a um evento
 router.post("/:id/artists", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -273,16 +274,16 @@ router.post("/:id/artists", authenticateToken, async (req, res) => {
 
     const event = events[0];
 
-    // Verificar se o artista existe
+    // Verificar se o artista ou grupo existe
     const [artists] = await db.query(
-      "SELECT * FROM users WHERE id = ? AND role = 'artist'",
+      "SELECT * FROM users WHERE id = ? AND role IN ('artist', 'group')",
       [artist_id]
     );
     if (artists.length === 0) {
-      return res.status(404).json({ error: "Artista não encontrado" });
+      return res.status(404).json({ error: "Artista ou grupo não encontrado" });
     }
 
-    // Verificar se o artista já está associado ao evento
+    // Verificar se o artista/grupo já está associado ao evento
     const [existing] = await db.query(
       "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
       [id, artist_id]
@@ -290,32 +291,39 @@ router.post("/:id/artists", authenticateToken, async (req, res) => {
     if (existing.length > 0) {
       return res
         .status(400)
-        .json({ error: "Artista já está associado ao evento" });
+        .json({ error: "Artista ou grupo já está associado ao evento" });
     }
 
-    // Adicionar o artista ao evento
+    // Adicionar o artista/grupo ao evento
     await db.query(
       "INSERT INTO event_artists (event_id, user_id, amount, is_paid) VALUES (?, ?, ?, ?)",
       [id, artist_id, amount, false]
     );
 
-    // Criar notificação para o artista
+    // Criar notificação para o artista/grupo
+    console.log(
+      `[POST /events/:id/artists] Gerando notificação para artistId: ${artist_id}`
+    );
     await createNotification(
       req,
-      artist_id,
-      "new_event",
-      `Você foi adicionado ao evento '${event.title}' agendado para ${new Date(event.date).toLocaleDateString()}.`
+      parseInt(artist_id),
+      "artist_added",
+      `Você foi adicionado ao evento '${event.title}' agendado para ${new Date(event.date).toLocaleDateString("pt-BR")}.`
     );
 
     res
       .status(201)
-      .json({ message: "Artista adicionado ao evento com sucesso" });
+      .json({ message: "Artista ou grupo adicionado ao evento com sucesso" });
   } catch (error) {
-    console.error("Erro ao adicionar artista ao evento:", error);
+    console.error(
+      "[POST /events/:id/artists] Erro ao adicionar artista ao evento:",
+      error
+    );
     res.status(500).json({ error: "Erro ao adicionar artista ao evento" });
   }
 });
 
+// DELETE /api/events/:id/artists/:artistId - Remover um artista de um evento
 // DELETE /api/events/:id/artists/:artistId - Remover um artista de um evento
 router.delete("/:id/artists/:artistId", authenticateToken, async (req, res) => {
   try {
@@ -332,7 +340,9 @@ router.delete("/:id/artists/:artistId", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "Evento não encontrado" });
     }
 
-    // Verificar se o artista está associado ao evento
+    const event = events[0];
+
+    // Verificar se o artista/grupo está associado ao evento
     const [existing] = await db.query(
       "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
       [id, artistId]
@@ -340,24 +350,40 @@ router.delete("/:id/artists/:artistId", authenticateToken, async (req, res) => {
     if (existing.length === 0) {
       return res
         .status(404)
-        .json({ error: "Artista não encontrado no evento" });
+        .json({ error: "Artista ou grupo não encontrado no evento" });
     }
 
-    // Remover o artista do evento
+    // Remover o artista/grupo do evento
     await db.query(
       "DELETE FROM event_artists WHERE event_id = ? AND user_id = ?",
       [id, artistId]
     );
 
-    res.status(200).json({ message: "Artista removido do evento com sucesso" });
+    // Criar notificação para o artista/grupo
+    console.log(
+      `[DELETE /events/:id/artists/:artistId] Gerando notificação para artistId: ${artistId}`
+    );
+    await createNotification(
+      req,
+      parseInt(artistId),
+      "artist_removed",
+      `Você foi removido do evento '${event.title}' agendado para ${new Date(event.date).toLocaleDateString("pt-BR")}.`
+    );
+
+    res
+      .status(200)
+      .json({ message: "Artista ou grupo removido do evento com sucesso" });
   } catch (error) {
-    console.error("Erro ao remover artista do evento:", error);
+    console.error(
+      "[DELETE /events/:id/artists/:artistId] Erro ao remover artista do evento:",
+      error
+    );
     res.status(500).json({ error: "Erro ao remover artista do evento" });
   }
 });
 
 // PATCH /api/events/:id/artists/:artistId - Atualizar o status de pagamento de um artista
-// PATCH /api/events/:id/artists/:artistId
+// PATCH /api/events/:id/artists/:artistId - Atualizar o status de pagamento de um artista
 router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
   try {
     const { id, artistId } = req.params;
@@ -383,7 +409,7 @@ router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
 
     const event = events[0];
 
-    // Verificar se o artista está associado ao evento
+    // Verificar se o artista/grupo está associado ao evento
     const [existing] = await db.query(
       "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
       [id, artistId]
@@ -391,7 +417,7 @@ router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
     if (existing.length === 0) {
       return res
         .status(404)
-        .json({ error: "Artista não encontrado no evento" });
+        .json({ error: "Artista ou grupo não encontrado no evento" });
     }
 
     // Atualizar o status de pagamento
@@ -403,13 +429,13 @@ router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
     // Converter artistId para número
     const artistIdNumber = parseInt(artistId);
 
-    // Criar notificação para o artista
+    // Criar notificação para o artista/grupo
     console.log(
       `[PATCH /events/:id/artists/:artistId] Gerando notificação para artistId: ${artistIdNumber}`
     );
     await createNotification(
       req,
-      artistIdNumber, // Usar o número convertido
+      artistIdNumber,
       "payment_status_updated",
       `O status de pagamento do evento '${event.title}' foi atualizado para ${is_paid ? "Pago" : "Pendente"}.`
     );
