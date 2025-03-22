@@ -100,34 +100,28 @@ router.get("/me/events", authenticateToken, async (req, res) => {
 
     const [events] = await db.query(
       `
-      SELECT e.id, e.title, e.date, ea.status
+      SELECT e.id, e.title, e.date, ea.is_paid
       FROM events e
       JOIN event_artists ea ON e.id = ea.event_id
-      WHERE ea.artist_id = ?
+      WHERE ea.user_id = ?
     `,
       [req.user.id]
     );
 
-    res.status(200).json(events);
+    // Mapear is_paid para status
+    const mappedEvents = events.map((event) => ({
+      id: event.id,
+      title: event.title,
+      date: event.date,
+      status: event.is_paid ? "Confirmado" : "Pendente",
+    }));
+
+    res.status(200).json(mappedEvents);
   } catch (error) {
     console.error("Erro ao listar eventos do usuário:", error);
     res.status(500).json({ error: "Erro ao listar eventos do usuário" });
   }
 });
-
-// GET /api/users/artists - Listar usuários com papel "artist"
-router.get("/artists", authenticateToken, async (req, res) => {
-  try {
-    const [users] = await db.query(
-      'SELECT id, name FROM users WHERE role = "artist"'
-    );
-    res.status(200).json(users);
-  } catch (error) {
-    console.error("Erro ao listar usuários artistas:", error);
-    res.status(500).json({ error: "Erro ao listar usuários artistas" });
-  }
-});
-
 // POST /api/users - Cadastrar um novo artista ou grupo cultural
 router.post(
   "/",
