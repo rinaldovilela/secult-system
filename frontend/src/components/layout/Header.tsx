@@ -5,6 +5,14 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
+import {
+  LogOut,
+  User,
+  Calendar,
+  Search,
+  FileText,
+  PlusCircle,
+} from "lucide-react";
 
 export default function Header() {
   const { user, isAuthLoading } = useAuth() as {
@@ -32,42 +40,70 @@ export default function Header() {
   const isArtistOrGroup = user && ["artist", "group"].includes(user.role);
 
   return (
-    <header className="bg-neutral-900 text-white p-4">
-      <div className="container mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+    <header className="bg-indigo-800 text-white shadow-md">
+      <div className="container mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+        {/* Logo */}
         <Link href="/">
-          <h2 className="text-xl font-bold">Secult System</h2>
+          <h2 className="text-2xl font-bold tracking-tight hover:text-indigo-200 transition-colors">
+            Secult System
+          </h2>
         </Link>
-        <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
+
+        {/* Navegação */}
+        <nav className="flex flex-wrap items-center gap-3">
           {user ? (
             <>
-              <span className="text-sm sm:text-base text-neutral-200">
-                Bem-vindo, {user.name} ({user.role})
+              <span className="text-sm text-indigo-100">
+                Olá, {user.name} ({user.role})
               </span>
-              <Button asChild variant="darkHeader" aria-label="Ver perfil">
-                <Link href="/profile">Meu Perfil</Link>
+              <Button
+                asChild
+                variant="ghost"
+                className="text-white hover:bg-indigo-700 hover:text-white"
+                aria-label="Ver perfil"
+              >
+                <Link href="/profile" className="flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  Meu Perfil
+                </Link>
               </Button>
               {isArtistOrGroup && (
                 <>
                   <Button
                     asChild
-                    variant="darkHeader"
+                    variant="ghost"
+                    className="text-white hover:bg-indigo-700 hover:text-white"
                     aria-label="Editar perfil"
                   >
-                    <Link href="/profile/edit">Editar Perfil</Link>
+                    <Link
+                      href="/profile/edit"
+                      className="flex items-center gap-2"
+                    >
+                      <User className="w-4 h-4" />
+                      Editar Perfil
+                    </Link>
                   </Button>
                   <Button
                     asChild
-                    variant="darkHeader"
+                    variant="ghost"
+                    className="text-white hover:bg-indigo-700 hover:text-white"
                     aria-label="Ver meus eventos"
                   >
-                    <Link href="/my-events">Meus Eventos</Link>
+                    <Link href="/my-events" className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4" />
+                      Meus Eventos
+                    </Link>
                   </Button>
                   <Button
                     asChild
-                    variant="darkHeader"
+                    variant="ghost"
+                    className="text-white hover:bg-indigo-700 hover:text-white"
                     aria-label="Buscar eventos"
                   >
-                    <Link href="/search">Buscar Eventos</Link>
+                    <Link href="/search" className="flex items-center gap-2">
+                      <Search className="w-4 h-4" />
+                      Buscar Eventos
+                    </Link>
                   </Button>
                 </>
               )}
@@ -75,45 +111,78 @@ export default function Header() {
                 <>
                   <Button
                     asChild
-                    variant="darkHeader"
+                    variant="ghost"
+                    className="text-white hover:bg-indigo-700 hover:text-white"
                     aria-label="Cadastrar novo usuário"
                   >
-                    <Link href="/users/new">Cadastrar Usuário</Link>
+                    <Link href="/users/new" className="flex items-center gap-2">
+                      <PlusCircle className="w-4 h-4" />
+                      Cadastrar Usuário
+                    </Link>
                   </Button>
                   <Button
                     asChild
-                    variant="darkHeader"
+                    variant="ghost"
+                    className="text-white hover:bg-indigo-700 hover:text-white"
                     aria-label="Cadastrar novo evento"
                   >
-                    <Link href="/events/new">Cadastrar Evento</Link>
-                  </Button>
-                  <Button asChild variant="darkHeader" aria-label="Buscar">
-                    <Link href="/search">Buscar</Link>
+                    <Link
+                      href="/events/new"
+                      className="flex items-center gap-2"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      Cadastrar Evento
+                    </Link>
                   </Button>
                   <Button
                     asChild
-                    variant="darkHeader"
+                    variant="ghost"
+                    className="text-white hover:bg-indigo-700 hover:text-white"
+                    aria-label="Buscar"
+                  >
+                    <Link href="/search" className="flex items-center gap-2">
+                      <Search className="w-4 h-4" />
+                      Buscar
+                    </Link>
+                  </Button>
+                  <Button
+                    asChild
+                    variant="ghost"
+                    className="text-white hover:bg-indigo-700 hover:text-white"
                     aria-label="Ver relatórios"
                   >
-                    <Link href="/reports">Relatórios</Link>
+                    <Link href="/reports" className="flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      Relatórios
+                    </Link>
                   </Button>
                 </>
               )}
               <Button
-                variant="darkHeader"
+                variant="ghost"
                 onClick={handleLogout}
                 disabled={isLoggingOut}
+                className="text-white hover:bg-indigo-700 hover:text-white"
                 aria-label="Sair do sistema"
               >
+                <LogOut className="w-4 h-4 mr-2" />
                 {isLoggingOut ? "Saindo..." : "Sair"}
               </Button>
             </>
           ) : (
-            <Button asChild variant="darkHeader" aria-label="Fazer login">
-              <Link href="/login">Login</Link>
+            <Button
+              asChild
+              variant="ghost"
+              className="text-white hover:bg-indigo-700 hover:text-white"
+              aria-label="Fazer login"
+            >
+              <Link href="/login" className="flex items-center gap-2">
+                <User className="w-4 h-4" />
+                Login
+              </Link>
             </Button>
           )}
-        </div>
+        </nav>
       </div>
     </header>
   );
