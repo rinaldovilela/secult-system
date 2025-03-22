@@ -81,7 +81,7 @@ export default function UserDetails() {
 
   // Função para converter buffer em base64, se necessário
   const getProfilePictureSrc = (picture: Buffer | string | null) => {
-    if (!picture) return null;
+    if (!picture) return undefined;
     if (typeof picture === "string") return picture;
     return `data:image/jpeg;base64,${Buffer.from(picture).toString("base64")}`;
   };
@@ -95,7 +95,7 @@ export default function UserDetails() {
   };
 
   const getVideoSrc = (video: Buffer | string | null) => {
-    if (!video) return null;
+    if (!video) return undefined;
     if (typeof video === "string") return video;
     return `data:video/mp4;base64,${Buffer.from(video).toString("base64")}`;
   };
@@ -252,7 +252,10 @@ export default function UserDetails() {
                               Portfólio
                             </p>
                             <a
-                              href={getPortfolioSrc(userDetails.portfolio)}
+                              href={
+                                getPortfolioSrc(userDetails.portfolio) ||
+                                undefined
+                              }
                               download="portfolio.pdf"
                               className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
                             >
