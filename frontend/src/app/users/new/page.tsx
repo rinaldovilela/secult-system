@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Loading from "@/components/ui/loading";
+import { User, Mail, Lock, Image, FileText, Video } from "lucide-react";
 
 export default function NewUser() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function NewUser() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState(""); // Valor inicial vazio
+  const [role, setRole] = useState("");
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
   const [portfolio, setPortfolio] = useState<File | null>(null);
   const [video, setVideo] = useState<File | null>(null);
@@ -43,27 +44,18 @@ export default function NewUser() {
     e.preventDefault();
     setIsLoading(true);
 
-    // Validar o campo role
     if (!role) {
       toast.error("Por favor, selecione o tipo (Artista ou Grupo Cultural).");
       setIsLoading(false);
       return;
     }
 
-    // Validar o tamanho dos arquivos
-    if (!validateFileSize(profilePicture, "foto de perfil")) {
-      setIsLoading(false);
-      return;
-    }
-    if (!validateFileSize(portfolio, "portfólio")) {
-      setIsLoading(false);
-      return;
-    }
-    if (!validateFileSize(video, "vídeo")) {
-      setIsLoading(false);
-      return;
-    }
-    if (!validateFileSize(relatedFiles, "arquivos relacionados")) {
+    if (
+      !validateFileSize(profilePicture, "foto de perfil") ||
+      !validateFileSize(portfolio, "portfólio") ||
+      !validateFileSize(video, "vídeo") ||
+      !validateFileSize(relatedFiles, "arquivos relacionados")
+    ) {
       setIsLoading(false);
       return;
     }
@@ -111,112 +103,147 @@ export default function NewUser() {
   }
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-6 text-neutral-900">
-        Cadastrar Artista ou Grupo Cultural
-      </h1>
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-neutral-700">
-              Nome
-            </label>
-            <Input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700">
-              Email
-            </label>
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
+    <div className="min-h-screen bg-gray-100 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto">
+        <div className="bg-white shadow-lg rounded-lg p-6 sm:p-8">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900">
+            Cadastrar Artista ou Grupo Cultural
+          </h1>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <User className="w-5 h-5 text-indigo-600" />
+                  Nome
+                </label>
+                <Input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <Mail className="w-5 h-5 text-indigo-600" />
+                  Email
+                </label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <Lock className="w-5 h-5 text-indigo-600" />
+                Senha
+              </label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <User className="w-5 h-5 text-indigo-600" />
+                Tipo
+              </label>
+              <Select onValueChange={setRole} value={role}>
+                <SelectTrigger className="mt-1 w-full">
+                  <SelectValue placeholder="Selecione o tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="artist">Artista</SelectItem>
+                  <SelectItem value="group">Grupo Cultural</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="bg-gray-50 p-6 rounded-lg shadow-sm">
+              <h2 className="text-xl font-semibold mb-4 text-gray-900">
+                Mídias e Arquivos
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <Image className="w-5 h-5 text-indigo-600" />
+                    Foto de Perfil (máx. 50MB)
+                  </label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) =>
+                      setProfilePicture(e.target.files?.[0] || null)
+                    }
+                    className="mt-1 w-full"
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <FileText className="w-5 h-5 text-indigo-600" />
+                    Portfólio (máx. 50MB)
+                  </label>
+                  <Input
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={(e) => setPortfolio(e.target.files?.[0] || null)}
+                    className="mt-1 w-full"
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <Video className="w-5 h-5 text-indigo-600" />
+                    Vídeo (máx. 50MB)
+                  </label>
+                  <Input
+                    type="file"
+                    accept="video/*"
+                    onChange={(e) => setVideo(e.target.files?.[0] || null)}
+                    className="mt-1 w-full"
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <FileText className="w-5 h-5 text-indigo-600" />
+                    Arquivos Relacionados (máx. 50MB)
+                  </label>
+                  <Input
+                    type="file"
+                    onChange={(e) =>
+                      setRelatedFiles(e.target.files?.[0] || null)
+                    }
+                    className="mt-1 w-full"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Button
+                type="submit"
+                disabled={isLoading}
+                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                {isLoading ? "Cadastrando..." : "Cadastrar"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => router.push("/search")}
+                className="w-full sm:w-auto border-gray-300 text-gray-700 hover:bg-gray-100"
+              >
+                Cancelar
+              </Button>
+            </div>
+          </form>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Senha
-          </label>
-          <Input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Tipo
-          </label>
-          <Select onValueChange={setRole} value={role}>
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione o tipo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="artist">Artista</SelectItem>
-              <SelectItem value="group">Grupo Cultural</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Foto de Perfil (máx. 50MB)
-          </label>
-          <Input
-            type="file"
-            accept="image/*"
-            onChange={(e) => setProfilePicture(e.target.files?.[0] || null)}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Portfólio (máx. 50MB)
-          </label>
-          <Input
-            type="file"
-            accept=".pdf,.doc,.docx"
-            onChange={(e) => setPortfolio(e.target.files?.[0] || null)}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Vídeo (máx. 50MB)
-          </label>
-          <Input
-            type="file"
-            accept="video/*"
-            onChange={(e) => setVideo(e.target.files?.[0] || null)}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">
-            Arquivos Relacionados (máx. 50MB)
-          </label>
-          <Input
-            type="file"
-            onChange={(e) => setRelatedFiles(e.target.files?.[0] || null)}
-          />
-        </div>
-        <div className="flex gap-4">
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? "Cadastrando..." : "Cadastrar"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => router.push("/search")}
-          >
-            Cancelar
-          </Button>
-        </div>
-      </form>
+      </div>
     </div>
   );
 }
