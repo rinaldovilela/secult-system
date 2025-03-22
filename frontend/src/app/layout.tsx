@@ -1,7 +1,9 @@
+// app/layout.tsx
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import Header from "@/components/layout/Header";
+import { SocketProvider } from "@/lib/SocketContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -20,9 +22,11 @@ export default function RootLayout({
       <body
         className={`${inter.className} h-full bg-neutral-100 flex flex-col`}
       >
-        <Header />
-        <main className="flex-1 ">{children}</main>
-        <Toaster position="top-right" />
+        <SocketProvider>
+          <Header />
+          <main className="flex-1">{children}</main>
+          <Toaster position="top-right" />
+        </SocketProvider>
       </body>
     </html>
   );

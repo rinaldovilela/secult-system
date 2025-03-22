@@ -1,3 +1,4 @@
+// components/Notifications.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -7,97 +8,25 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import Loading from "@/components/ui/loading";
 import { getToken } from "@/lib/auth";
+import { useSocket } from "@/lib/SocketContext";
 import { Button } from "@/components/ui/button";
-import { Bell, CheckCircle, Clock, Link } from "lucide-react";
+import { Bell, CheckCircle } from "lucide-react";
 
-type Notification = {
+interface Notification {
   id: number;
+  user_id: number;
   type: string;
   message: string;
   is_read: boolean;
   created_at: string;
-};
+}
 
 export default function Notifications() {
   const router = useRouter();
   const { user, isAuthLoading } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const { notifications, markNotificationAsRead } = useSocket();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const fetchNotifications = async () => {
-    try {
-      const token = getToken();
-      if (!token) {
-        throw new Error("Token não encontrado. Faça login novamente.");
-      }
-
-      const response = await axios.get(
-        "http://localhost:5000/api/notifications",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      console.log("Notificações retornadas:", response.data);
-      setNotifications(response.data);
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const errorMessage = `Erro ao carregar notificações: ${
-          error.response?.data?.error || error.message
-        }`;
-        setError(errorMessage);
-        toast.error(errorMessage);
-        if (error.response?.status === 403 || error.response?.status === 401) {
-          router.push("/login");
-        }
-      } else {
-        const errorMessage = `Erro ao carregar notificações: ${String(error)}`;
-        setError(errorMessage);
-        toast.error(errorMessage);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const markAsRead = async (notificationId: number) => {
-    try {
-      const token = getToken();
-      if (!token) {
-        throw new Error("Token não encontrado. Faça login novamente.");
-      }
-
-      await axios.patch(
-        `http://localhost:5000/api/notifications/${notificationId}/read`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      setNotifications((prev) =>
-        prev.map((notif) =>
-          notif.id === notificationId ? { ...notif, is_read: true } : notif
-        )
-      );
-      toast.success("Notificação marcada como lida");
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        toast.error(
-          `Erro ao marcar notificação como lida: ${
-            error.response?.data?.error || error.message
-          }`
-        );
-      } else {
-        toast.error(`Erro ao marcar notificação como lida: ${String(error)}`);
-      }
-    }
-  };
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -105,9 +34,33 @@ export default function Notifications() {
       router.push("/login");
       return;
     }
-
-    fetchNotifications();
+    setIsLoading(false);
   }, [user, isAuthLoading, router]);
+
+  const handleMarkAsRead = async (notificationId: number) => {
+    try {
+      const token = getToken();
+      if (!token)
+        throw new Error("Token não encontrado. Faça login novamente.");
+
+      await axios.patch(
+        `http://localhost:5000/api/notifications/${notificationId}/read`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      markNotificationAsRead(notificationId);
+      toast.success("Notificação marcada como lida");
+    } catch (error) {
+      toast.error(
+        axios.isAxiosError(error)
+          ? `Erro ao marcar notificação: ${
+              error.response?.data?.error || error.message
+            }`
+          : `Erro ao marcar notificação: ${String(error)}`
+      );
+    }
+  };
 
   if (isAuthLoading || isLoading) return <Loading />;
   if (!user) return null;
@@ -121,11 +74,8 @@ export default function Notifications() {
         {error ? (
           <div className="bg-white shadow-lg rounded-lg p-6 text-center">
             <p className="text-red-600">{error}</p>
-            <Button
-              asChild
-              className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white"
-            >
-              <Link href="/dashboard">Voltar ao Dashboard</Link>
+            <Button className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white">
+              <a href="/dashboard">Voltar ao Dashboard</a>
             </Button>
           </div>
         ) : notifications.length === 0 ? (
@@ -173,7 +123,7 @@ export default function Notifications() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => markAsRead(notification.id)}
+                    onClick={() => handleMarkAsRead(notification.id)}
                     className="border-gray-300 text-gray-700 hover:bg-gray-100"
                   >
                     <CheckCircle className="w-4 h-4 mr-2" />

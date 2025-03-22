@@ -1,3 +1,4 @@
+// components/layout/Header.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -6,16 +7,7 @@ import { useAuth } from "@/lib/useAuth";
 import axios from "axios";
 import Link from "next/link";
 import { getToken } from "@/lib/auth";
-import {
-  Bell,
-  User,
-  Calendar,
-  Search,
-  FileText,
-  PlusCircle,
-  LogOut,
-  Menu,
-} from "lucide-react";
+import { useSocket } from "@/lib/SocketContext";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -34,10 +26,21 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
-import toast from "react-hot-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import toast from "react-hot-toast";
+import {
+  Bell,
+  User,
+  Calendar,
+  Search,
+  FileText,
+  PlusCircle,
+  LogOut,
+  Menu,
+} from "lucide-react";
 
 interface User {
+  id: string;
   name: string;
   role: string;
   profile_picture?: string;
@@ -45,21 +48,19 @@ interface User {
 
 export default function Header() {
   const { user: authUser, isAuthLoading } = useAuth();
+  const { unreadCount } = useSocket();
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [unreadNotifications, setUnreadNotifications] = useState<number>(0);
-  const [isLoadingNotifications, setIsLoadingNotifications] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchUserProfile = async () => {
     try {
       const token = getToken();
-      if (!token) {
+      if (!token)
         throw new Error("Token não encontrado. Faça login novamente.");
-      }
 
       const response = await axios.get("http://localhost:5000/api/users/me", {
         headers: { Authorization: `Bearer ${token}` },
@@ -67,10 +68,10 @@ export default function Header() {
       setUser(response.data);
     } catch (error) {
       const errorMessage = axios.isAxiosError(error)
-        ? `Erro ao buscar perfil do usuário: ${
+        ? `Erro ao buscar perfil: ${
             error.response?.data?.error || error.message
           }`
-        : `Erro ao buscar perfil do usuário: ${String(error)}`;
+        : `Erro ao buscar perfil: ${String(error)}`;
       setError(errorMessage);
       toast.error(errorMessage);
       if (
@@ -84,29 +85,9 @@ export default function Header() {
     }
   };
 
-  const fetchUnreadNotifications = async () => {
-    try {
-      const token = getToken();
-      if (!token) return;
-
-      const response = await axios.get(
-        "http://localhost:5000/api/notifications?unreadOnly=true",
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      setUnreadNotifications(response.data.length);
-    } catch (error) {
-      console.error("Erro ao buscar notificações não lidas:", error);
-    } finally {
-      setIsLoadingNotifications(false);
-    }
-  };
-
   useEffect(() => {
     if (isAuthLoading || !authUser) return;
     fetchUserProfile();
-    fetchUnreadNotifications();
   }, [isAuthLoading, authUser]);
 
   const handleLogout = () => {
@@ -114,14 +95,10 @@ export default function Header() {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     window.dispatchEvent(new Event("storage"));
-    try {
-      router.push("/login");
-    } finally {
-      setIsLoggingOut(false);
-    }
+    router.push("/login");
+    setIsLoggingOut(false);
   };
 
-  // Renderizar um esqueleto enquanto isAuthLoading é true
   if (isAuthLoading) {
     return (
       <header className="bg-indigo-800 text-white shadow-md">
@@ -139,7 +116,6 @@ export default function Header() {
     );
   }
 
-  // Renderizar um header mínimo se houver erro
   if (error) {
     return (
       <header className="bg-indigo-800 text-white shadow-md">
@@ -174,18 +150,15 @@ export default function Header() {
   return (
     <header className="bg-indigo-800 text-white shadow-md">
       <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-        {/* Logo */}
         <Link href="/">
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight hover:text-indigo-200 transition-colors">
             Secult System
           </h2>
         </Link>
 
-        {/* Navegação Desktop */}
         <div className="hidden lg:flex items-center gap-4">
           {authUser ? (
             <>
-              {/* Links de Navegação */}
               {isArtistOrGroup && (
                 <>
                   <Link
@@ -261,31 +234,21 @@ export default function Header() {
                 </>
               )}
 
-              {/* Sino de Notificações */}
               <Link
                 href="/notifications"
                 className="relative text-white hover:text-indigo-200"
                 aria-label={`Notificações${
-                  unreadNotifications > 0
-                    ? `, ${unreadNotifications} não lidas`
-                    : ""
+                  unreadCount > 0 ? `, ${unreadCount} não lidas` : ""
                 }`}
               >
-                {isLoadingNotifications ? (
-                  <Skeleton className="h-6 w-6 rounded-full bg-indigo-700" />
-                ) : (
-                  <>
-                    <Bell className="w-6 h-6" />
-                    {unreadNotifications > 0 && (
-                      <Badge className="absolute -top-1 -right-1 bg-red-500 text-white text-xs">
-                        {unreadNotifications}
-                      </Badge>
-                    )}
-                  </>
+                <Bell className="w-6 h-6" />
+                {unreadCount > 0 && (
+                  <Badge className="absolute -top-1 -right-1 bg-red-500 text-white text-xs">
+                    {unreadCount}
+                  </Badge>
                 )}
               </Link>
 
-              {/* Dropdown de Usuário */}
               {isLoadingUser ? (
                 <Skeleton className="h-8 w-8 rounded-full bg-indigo-700" />
               ) : (
@@ -354,7 +317,6 @@ export default function Header() {
           )}
         </div>
 
-        {/* Navegação Mobile */}
         <div className="lg:hidden">
           <Sheet>
             <SheetTrigger asChild>
@@ -411,9 +373,9 @@ export default function Header() {
                     >
                       <Bell className="w-5 h-5" />
                       Notificações
-                      {!isLoadingNotifications && unreadNotifications > 0 && (
+                      {unreadCount > 0 && (
                         <Badge className="ml-2 bg-red-500 text-white text-xs">
-                          {unreadNotifications}
+                          {unreadCount}
                         </Badge>
                       )}
                     </Link>

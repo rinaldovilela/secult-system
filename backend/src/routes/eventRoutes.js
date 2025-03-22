@@ -4,16 +4,29 @@ const { authenticateToken, authorizeRole } = require("../middleware/auth");
 
 const router = express.Router();
 
-// Função auxiliar para criar uma notificação
-const createNotification = async (userId, type, message) => {
+// Função auxiliar para criar uma notificação e emitir evento WebSocket
+const createNotification = async (req, userId, type, message) => {
   try {
-    await db.query(
+    const [result] = await db.query(
       `
       INSERT INTO notifications (user_id, type, message, is_read, created_at)
       VALUES (?, ?, ?, ?, NOW())
     `,
       [userId, type, message, false]
     );
+
+    const notification = {
+      id: result.insertId,
+      user_id: userId,
+      type,
+      message,
+      is_read: false,
+      created_at: new Date().toISOString(),
+    };
+
+    // Emitir evento WebSocket para o usuário específico
+    const io = req.app.get("io");
+    io.to(userId.toString()).emit("new_notification", notification);
   } catch (error) {
     console.error("Erro ao criar notificação:", error);
   }
@@ -68,6 +81,7 @@ router.post("/", authenticateToken, async (req, res) => {
 
         // Criar notificação para o artista
         await createNotification(
+          req,
           artist_id,
           "new_event",
           `Você foi adicionado ao evento '${title}' agendado para ${new Date(date).toLocaleDateString()}.`
@@ -270,6 +284,7 @@ router.post("/:id/artists", authenticateToken, async (req, res) => {
 
     // Criar notificação para o artista
     await createNotification(
+      req,
       artist_id,
       "new_event",
       `Você foi adicionado ao evento '${event.title}' agendado para ${new Date(event.date).toLocaleDateString()}.`
@@ -369,6 +384,7 @@ router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
 
     // Criar notificação para o artista
     await createNotification(
+      req,
       artistId,
       "payment_status_updated",
       `O status de pagamento do evento '${event.title}' foi atualizado para ${is_paid ? "Pago" : "Pendente"}.`
