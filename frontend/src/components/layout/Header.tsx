@@ -35,6 +35,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import toast from "react-hot-toast";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface User {
   name: string;
@@ -47,7 +48,7 @@ export default function Header() {
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState<number>(0);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(true);
@@ -79,7 +80,7 @@ export default function Header() {
         router.push("/login");
       }
     } finally {
-      setIsLoading(false);
+      setIsLoadingUser(false);
     }
   };
 
@@ -120,7 +121,25 @@ export default function Header() {
     }
   };
 
-  if (isAuthLoading || isLoading) return null;
+  // Renderizar um esqueleto enquanto isAuthLoading é true
+  if (isAuthLoading) {
+    return (
+      <header className="bg-indigo-800 text-white shadow-md">
+        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <Skeleton className="h-8 w-32 bg-indigo-700" />
+          <div className="hidden lg:flex items-center gap-4">
+            <Skeleton className="h-6 w-6 rounded-full bg-indigo-700" />
+            <Skeleton className="h-8 w-8 rounded-full bg-indigo-700" />
+          </div>
+          <div className="lg:hidden">
+            <Skeleton className="h-6 w-6 bg-indigo-700" />
+          </div>
+        </div>
+      </header>
+    );
+  }
+
+  // Renderizar um header mínimo se houver erro
   if (error) {
     return (
       <header className="bg-indigo-800 text-white shadow-md">
@@ -164,7 +183,7 @@ export default function Header() {
 
         {/* Navegação Desktop */}
         <div className="hidden lg:flex items-center gap-4">
-          {user ? (
+          {authUser ? (
             <>
               {/* Links de Navegação */}
               {isArtistOrGroup && (
@@ -252,61 +271,74 @@ export default function Header() {
                     : ""
                 }`}
               >
-                <Bell className="w-6 h-6" />
-                {!isLoadingNotifications && unreadNotifications > 0 && (
-                  <Badge className="absolute -top-1 -right-1 bg-red-500 text-white text-xs">
-                    {unreadNotifications}
-                  </Badge>
+                {isLoadingNotifications ? (
+                  <Skeleton className="h-6 w-6 rounded-full bg-indigo-700" />
+                ) : (
+                  <>
+                    <Bell className="w-6 h-6" />
+                    {unreadNotifications > 0 && (
+                      <Badge className="absolute -top-1 -right-1 bg-red-500 text-white text-xs">
+                        {unreadNotifications}
+                      </Badge>
+                    )}
+                  </>
                 )}
               </Link>
 
               {/* Dropdown de Usuário */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <div className="flex items-center gap-2 cursor-pointer">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={profilePictureUrl} alt={user.name} />
-                      <AvatarFallback>
-                        <User className="w-5 h-5" />
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm text-indigo-100 hidden xl:inline">
-                      {user.name}
-                    </span>
-                  </div>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>
-                    {user.name} ({user.role})
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/profile" className="flex items-center gap-2">
-                      <User className="w-4 h-4" />
-                      Meu Perfil
-                    </Link>
-                  </DropdownMenuItem>
-                  {isArtistOrGroup && (
+              {isLoadingUser ? (
+                <Skeleton className="h-8 w-8 rounded-full bg-indigo-700" />
+              ) : (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <div className="flex items-center gap-2 cursor-pointer">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage
+                          src={profilePictureUrl}
+                          alt={user?.name || "Usuário"}
+                        />
+                        <AvatarFallback>
+                          <User className="w-5 h-5" />
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm text-indigo-100 hidden xl:inline">
+                        {user?.name || "Usuário"}
+                      </span>
+                    </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel>
+                      {user?.name || "Usuário"} ({user?.role || "Desconhecido"})
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
-                      <Link
-                        href="/profile/edit"
-                        className="flex items-center gap-2"
-                      >
+                      <Link href="/profile" className="flex items-center gap-2">
                         <User className="w-4 h-4" />
-                        Editar Perfil
+                        Meu Perfil
                       </Link>
                     </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={handleLogout}
-                    className="text-red-600"
-                  >
-                    <LogOut className="w-4 h-4 mr-2" />
-                    {isLoggingOut ? "Saindo..." : "Sair"}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    {isArtistOrGroup && (
+                      <DropdownMenuItem asChild>
+                        <Link
+                          href="/profile/edit"
+                          className="flex items-center gap-2"
+                        >
+                          <User className="w-4 h-4" />
+                          Editar Perfil
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={handleLogout}
+                      className="text-red-600"
+                    >
+                      <LogOut className="w-4 h-4 mr-2" />
+                      {isLoggingOut ? "Saindo..." : "Sair"}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </>
           ) : (
             <Link
@@ -341,20 +373,37 @@ export default function Header() {
                 <SheetTitle>Menu de Navegação</SheetTitle>
               </VisuallyHidden>
               <div className="flex flex-col gap-4 mt-6">
-                {user ? (
+                {authUser ? (
                   <>
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage src={profilePictureUrl} alt={user.name} />
-                        <AvatarFallback>
-                          <User className="w-6 h-6" />
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="text-sm font-semibold">{user.name}</p>
-                        <p className="text-xs text-indigo-200">{user.role}</p>
+                    {isLoadingUser ? (
+                      <div className="flex items-center gap-3">
+                        <Skeleton className="h-10 w-10 rounded-full bg-indigo-700" />
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-24 bg-indigo-700" />
+                          <Skeleton className="h-3 w-16 bg-indigo-700" />
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage
+                            src={profilePictureUrl}
+                            alt={user?.name || "Usuário"}
+                          />
+                          <AvatarFallback>
+                            <User className="w-6 h-6" />
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="text-sm font-semibold">
+                            {user?.name || "Usuário"}
+                          </p>
+                          <p className="text-xs text-indigo-200">
+                            {user?.role || "Desconhecido"}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     <Link
                       href="/notifications"
