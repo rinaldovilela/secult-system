@@ -1,4 +1,3 @@
-// components/Notifications.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -12,21 +11,11 @@ import { useSocket } from "@/lib/SocketContext";
 import { Button } from "@/components/ui/button";
 import { Bell, CheckCircle } from "lucide-react";
 
-interface Notification {
-  id: number;
-  user_id: number;
-  type: string;
-  message: string;
-  is_read: boolean;
-  created_at: string;
-}
-
 export default function Notifications() {
   const router = useRouter();
   const { user, isAuthLoading } = useAuth();
   const { notifications, markNotificationAsRead } = useSocket();
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -40,8 +29,9 @@ export default function Notifications() {
   const handleMarkAsRead = async (notificationId: number) => {
     try {
       const token = getToken();
-      if (!token)
+      if (!token) {
         throw new Error("Token não encontrado. Faça login novamente.");
+      }
 
       await axios.patch(
         `http://localhost:5000/api/notifications/${notificationId}/read`,
@@ -71,14 +61,8 @@ export default function Notifications() {
         <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900">
           Minhas Notificações
         </h1>
-        {error ? (
-          <div className="bg-white shadow-lg rounded-lg p-6 text-center">
-            <p className="text-red-600">{error}</p>
-            <Button className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white">
-              <a href="/dashboard">Voltar ao Dashboard</a>
-            </Button>
-          </div>
-        ) : notifications.length === 0 ? (
+
+        {notifications.length === 0 ? (
           <div className="bg-white shadow-lg rounded-lg p-6 text-center">
             <p className="text-gray-600">
               Você não tem notificações no momento.

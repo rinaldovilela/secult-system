@@ -57,14 +57,19 @@ export default function MyEvents() {
         }
 
         const validatedEvents = response.data
-          .map((event: any) => {
+          .map((event: Partial<Event>) => {
             if (!event.id || !event.title || !event.date || !event.status) {
               console.warn("Evento com estrutura inválida:", event);
               return null;
             }
-            return event as Event;
+            return {
+              id: event.id,
+              title: event.title,
+              date: event.date,
+              status: event.status,
+            } as Event;
           })
-          .filter((event: Event | null) => event !== null);
+          .filter((event: Event | null): event is Event => event !== null);
 
         setEvents(validatedEvents);
         if (validatedEvents.length === 0) {

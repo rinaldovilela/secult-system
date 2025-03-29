@@ -10,24 +10,38 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import Loading from "@/components/ui/loading";
 import { getToken } from "@/lib/auth";
-import { User, FileText, Image } from "lucide-react";
+import { User, FileText, Image as ImageIcon } from "lucide-react";
 
 export default function EditProfile() {
   const router = useRouter();
   const { user, isAuthLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [name, setName] = useState("");
-  const [bio, setBio] = useState("");
-  const [areaOfExpertise, setAreaOfExpertise] = useState("");
+  const [formData, setFormData] = useState({
+    name: "",
+    bio: "",
+    areaOfExpertise: "",
+  });
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
 
   useEffect(() => {
     if (user) {
-      setName(user.name || "");
-      setBio(user.bio || "");
-      setAreaOfExpertise(user.area_of_expertise || "");
+      setFormData({
+        name: user.name || "",
+        bio: user.bio || "",
+        areaOfExpertise: user.area_of_expertise || "",
+      });
     }
   }, [user]);
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,13 +55,14 @@ export default function EditProfile() {
         return;
       }
 
-      const formData = new FormData();
-      formData.append("name", name);
-      formData.append("bio", bio);
-      formData.append("area_of_expertise", areaOfExpertise);
-      if (profilePicture) formData.append("profile_picture", profilePicture);
+      const formDataToSend = new FormData();
+      formDataToSend.append("name", formData.name);
+      formDataToSend.append("bio", formData.bio);
+      formDataToSend.append("area_of_expertise", formData.areaOfExpertise);
+      if (profilePicture)
+        formDataToSend.append("profile_picture", profilePicture);
 
-      await axios.put("http://localhost:5000/api/users/me", formData, {
+      await axios.put("http://localhost:5000/api/users/me", formDataToSend, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
@@ -95,10 +110,11 @@ export default function EditProfile() {
               </label>
               <Input
                 type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
                 required
-                className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                className="mt-1 w-full"
               />
             </div>
             <div>
@@ -107,9 +123,10 @@ export default function EditProfile() {
                 Biografia
               </label>
               <Textarea
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                name="bio"
+                value={formData.bio}
+                onChange={handleChange}
+                className="mt-1 w-full"
               />
             </div>
             <div>
@@ -119,14 +136,16 @@ export default function EditProfile() {
               </label>
               <Input
                 type="text"
-                value={areaOfExpertise}
-                onChange={(e) => setAreaOfExpertise(e.target.value)}
-                className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                name="areaOfExpertise"
+                value={formData.areaOfExpertise}
+                onChange={handleChange}
+                className="mt-1 w-full"
               />
             </div>
             <div>
               <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <Image className="w-5 h-5 text-indigo-600" />
+                <ImageIcon className="w-5 h-5 text-indigo-600" />{" "}
+                {/* Alteração aqui */}
                 Foto de Perfil (máx. 50MB)
               </label>
               <Input
