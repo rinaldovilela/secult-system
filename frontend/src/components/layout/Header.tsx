@@ -1,7 +1,7 @@
 // components/layout/Header.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+// Removed duplicate import of useState and useEffect
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import axios from "axios";
@@ -38,6 +38,7 @@ import {
   LogOut,
   Menu,
 } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
 
 interface User {
   id: string;
@@ -56,7 +57,7 @@ export default function Header() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = useCallback(async () => {
     try {
       const token = getToken();
       if (!token)
@@ -83,14 +84,12 @@ export default function Header() {
     } finally {
       setIsLoadingUser(false);
     }
-  };
+  }, [router]); // Adicionamos router como dependência
 
   useEffect(() => {
-    const token = getToken();
-    if (token) {
-      fetchUserProfile();
-    }
-  }, []);
+    if (isAuthLoading || !authUser) return;
+    fetchUserProfile();
+  }, [isAuthLoading, authUser, fetchUserProfile]); // Adicionamos fetchUserProfile como dependência
 
   const handleLogout = () => {
     setIsLoggingOut(true);
