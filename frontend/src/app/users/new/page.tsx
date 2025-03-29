@@ -99,16 +99,12 @@ export default function NewUser() {
         }
       });
 
-      const response = await axios.post(
-        "http://localhost:5000/api/users",
-        formDataToSend,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
+      await axios.post("http://localhost:5000/api/users", formDataToSend, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
 
       toast.success("Usuário cadastrado com sucesso!");
       router.push("/search");
