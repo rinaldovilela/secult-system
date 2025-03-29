@@ -32,6 +32,71 @@ const handleMulterError = (err, req, res, next) => {
   next(err);
 };
 
+router.post(
+  "/register",
+  upload.fields([
+    { name: "profile_picture", maxCount: 1 },
+    { name: "portfolio", maxCount: 1 },
+    { name: "video", maxCount: 1 },
+    { name: "related_files", maxCount: 1 },
+  ]),
+  handleMulterError,
+  async (req, res) => {
+    try {
+      const {
+        name,
+        email,
+        password,
+        role = "artist",
+        bio = "",
+        area_of_expertise = "",
+      } = req.body;
+      const files = req.files;
+
+      // Validações básicas
+      if (!name || !email || !password) {
+        return res
+          .status(400)
+          .json({ error: "Nome, email e senha são obrigatórios" });
+      }
+
+      // Verificar se email já existe
+      const [existing] = await db.query("SELECT * FROM users WHERE email = ?", [
+        email,
+      ]);
+      if (existing.length > 0) {
+        return res.status(400).json({ error: "Email já está em uso" });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Inserir no banco
+      await db.query(
+        `INSERT INTO users (name, email, password, role, bio, area_of_expertise,
+         profile_picture, portfolio, video, related_files, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          name,
+          email,
+          hashedPassword,
+          role,
+          bio,
+          area_of_expertise,
+          files?.profile_picture?.[0]?.buffer,
+          files?.portfolio?.[0]?.buffer,
+          files?.video?.[0]?.buffer,
+          files?.related_files?.[0]?.buffer,
+        ]
+      );
+
+      res.status(201).json({ message: "Registro realizado com sucesso" });
+    } catch (error) {
+      console.error("Erro no registro:", error);
+      res.status(500).json({ error: "Erro durante o registro" });
+    }
+  }
+);
+
 router.get("/artists", authenticateToken, async (req, res) => {
   try {
     if (!["admin", "secretary"].includes(req.user.role)) {

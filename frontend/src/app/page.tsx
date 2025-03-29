@@ -96,7 +96,7 @@ export default function Home() {
                 variant="outline"
                 className="w-full sm:w-auto border-gray-300 text-gray-700 hover:bg-gray-100"
               >
-                <Link href="/register" className="flex items-center gap-2">
+                <Link href="users/register" className="flex items-center gap-2">
                   <UserPlus className="w-5 h-5" />
                   Registrar
                 </Link>
