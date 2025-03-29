@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Loading from "@/components/ui/loading";
 import { getToken } from "@/lib/auth";
-import { User, Mail, FileText, Calendar } from "lucide-react";
+import { User, Mail, FileText } from "lucide-react";
+import Image from "next/image"; // Import adicionado
 
 interface UserProfile {
   id: number;
@@ -110,11 +111,18 @@ export default function Profile() {
               {/* Foto de Perfil e Botões */}
               <div className="flex flex-col items-center">
                 {profile.profile_picture ? (
-                  <img
-                    src={getProfilePictureSrc(profile.profile_picture)}
-                    alt="Foto de Perfil"
-                    className="w-32 h-32 rounded-full object-cover mb-4"
-                  />
+                  <div className="relative w-32 h-32 rounded-full overflow-hidden mb-4">
+                    <Image
+                      src={
+                        getProfilePictureSrc(profile.profile_picture) ||
+                        "/default-profile-picture.jpg"
+                      }
+                      alt={`Foto de perfil de ${profile.name}`}
+                      fill
+                      className="object-cover"
+                      sizes="128px"
+                    />
+                  </div>
                 ) : (
                   <div className="w-32 h-32 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 mb-4">
                     Sem foto
