@@ -15,22 +15,34 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Loading from "@/components/ui/loading";
-import { User, Mail, Lock, Image, FileText, Video } from "lucide-react";
+import {
+  User,
+  Mail,
+  Lock,
+  Image as ImageIcon,
+  FileText,
+  Video,
+} from "lucide-react";
+import { getToken } from "@/lib/auth";
 
 export default function NewUser() {
   const router = useRouter();
   const { user, isAuthLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState("");
-  const [profilePicture, setProfilePicture] = useState<File | null>(null);
-  const [portfolio, setPortfolio] = useState<File | null>(null);
-  const [video, setVideo] = useState<File | null>(null);
-  const [relatedFiles, setRelatedFiles] = useState<File | null>(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "",
+  });
+  const [files, setFiles] = useState({
+    profile_picture: null as File | null,
+    portfolio: null as File | null,
+    video: null as File | null,
+    related_files: null as File | null,
+  });
 
-  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB em bytes
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
   const validateFileSize = (file: File | null, fieldName: string) => {
     if (file && file.size > MAX_FILE_SIZE) {
@@ -40,54 +52,71 @@ export default function NewUser() {
     return true;
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleFileChange =
+    (field: keyof typeof files) => (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0] || null;
+      if (file && validateFileSize(file, field.replace("_", " "))) {
+        setFiles((prev) => ({ ...prev, [field]: file }));
+      } else if (!file) {
+        setFiles((prev) => ({ ...prev, [field]: null }));
+      }
+    };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    if (!role) {
+    if (!formData.role) {
       toast.error("Por favor, selecione o tipo (Artista ou Grupo Cultural).");
       setIsLoading(false);
       return;
     }
 
-    if (
-      !validateFileSize(profilePicture, "foto de perfil") ||
-      !validateFileSize(portfolio, "portfólio") ||
-      !validateFileSize(video, "vídeo") ||
-      !validateFileSize(relatedFiles, "arquivos relacionados")
-    ) {
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      const token = localStorage.getItem("token");
-      const formData = new FormData();
-      formData.append("name", name);
-      formData.append("email", email);
-      formData.append("password", password);
-      formData.append("role", role);
-      if (profilePicture) formData.append("profile_picture", profilePicture);
-      if (portfolio) formData.append("portfolio", portfolio);
-      if (video) formData.append("video", video);
-      if (relatedFiles) formData.append("related_files", relatedFiles);
+      const token = getToken();
+      if (!token) {
+        toast.error("Token não encontrado. Faça login novamente.");
+        router.push("/login");
+        return;
+      }
 
-      await axios.post("http://localhost:5000/api/users", formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
-        },
+      const formDataToSend = new FormData();
+
+      // Adicionar campos de texto
+      Object.entries(formData).forEach(([key, value]) => {
+        formDataToSend.append(key, value);
       });
+
+      // Adicionar arquivos
+      Object.entries(files).forEach(([key, file]) => {
+        if (file) {
+          formDataToSend.append(key, file);
+        }
+      });
+
+      const response = await axios.post(
+        "http://localhost:5000/api/users",
+        formDataToSend,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
 
       toast.success("Usuário cadastrado com sucesso!");
       router.push("/search");
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        toast.error(
-          `Erro ao cadastrar usuário: ${
-            error.response?.data?.error || error.message
-          }`
-        );
+        const errorMessage = error.response?.data?.error || error.message;
+        toast.error(`Erro ao cadastrar usuário: ${errorMessage}`);
+        console.error("Detalhes do erro:", error.response?.data);
       } else {
         toast.error(`Erro ao cadastrar usuário: ${String(error)}`);
       }
@@ -118,10 +147,11 @@ export default function NewUser() {
                 </label>
                 <Input
                   type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
                   required
-                  className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                  className="mt-1 w-full"
                 />
               </div>
               <div>
@@ -131,10 +161,11 @@ export default function NewUser() {
                 </label>
                 <Input
                   type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
                   required
-                  className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                  className="mt-1 w-full"
                 />
               </div>
             </div>
@@ -145,10 +176,11 @@ export default function NewUser() {
               </label>
               <Input
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
                 required
-                className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                className="mt-1 w-full"
               />
             </div>
             <div>
@@ -156,7 +188,12 @@ export default function NewUser() {
                 <User className="w-5 h-5 text-indigo-600" />
                 Tipo
               </label>
-              <Select onValueChange={setRole} value={role}>
+              <Select
+                onValueChange={(value) =>
+                  setFormData((prev) => ({ ...prev, role: value }))
+                }
+                value={formData.role}
+              >
                 <SelectTrigger className="mt-1 w-full">
                   <SelectValue placeholder="Selecione o tipo" />
                 </SelectTrigger>
@@ -173,15 +210,13 @@ export default function NewUser() {
               <div className="space-y-4">
                 <div>
                   <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                    <Image className="w-5 h-5 text-indigo-600" />
+                    <ImageIcon className="w-5 h-5 text-indigo-600" />
                     Foto de Perfil (máx. 50MB)
                   </label>
                   <Input
                     type="file"
                     accept="image/*"
-                    onChange={(e) =>
-                      setProfilePicture(e.target.files?.[0] || null)
-                    }
+                    onChange={handleFileChange("profile_picture")}
                     className="mt-1 w-full"
                   />
                 </div>
@@ -193,7 +228,7 @@ export default function NewUser() {
                   <Input
                     type="file"
                     accept=".pdf,.doc,.docx"
-                    onChange={(e) => setPortfolio(e.target.files?.[0] || null)}
+                    onChange={handleFileChange("portfolio")}
                     className="mt-1 w-full"
                   />
                 </div>
@@ -205,7 +240,7 @@ export default function NewUser() {
                   <Input
                     type="file"
                     accept="video/*"
-                    onChange={(e) => setVideo(e.target.files?.[0] || null)}
+                    onChange={handleFileChange("video")}
                     className="mt-1 w-full"
                   />
                 </div>
@@ -216,9 +251,7 @@ export default function NewUser() {
                   </label>
                   <Input
                     type="file"
-                    onChange={(e) =>
-                      setRelatedFiles(e.target.files?.[0] || null)
-                    }
+                    onChange={handleFileChange("related_files")}
                     className="mt-1 w-full"
                   />
                 </div>
