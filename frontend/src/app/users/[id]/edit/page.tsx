@@ -23,9 +23,13 @@ export default function EditUser() {
     areaOfExpertise: "",
     role: "",
     profilePicture: null as string | null,
+    profilePictureFile: null as File | null,
     portfolio: null as string | null,
+    portfolioFile: null as File | null,
     video: null as string | null,
+    videoFile: null as File | null,
     relatedFiles: null as string | null,
+    relatedFilesFile: null as File | null,
   });
 
   useEffect(() => {
@@ -44,7 +48,7 @@ export default function EditUser() {
       try {
         const token = localStorage.getItem("token");
         const response = await axios.get(
-          `http://localhost:5000/api/users/${id}`,
+          `http://localhost:5000/api/users/${id}?timestamp=${Date.now()}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -59,15 +63,19 @@ export default function EditUser() {
           profilePicture: userData.profile_picture
             ? `data:image/jpeg;base64,${userData.profile_picture}`
             : null,
+          profilePictureFile: null,
           portfolio: userData.portfolio
             ? `data:application/pdf;base64,${userData.portfolio}`
             : null,
+          portfolioFile: null,
           video: userData.video
             ? `data:video/mp4;base64,${userData.video}`
             : null,
+          videoFile: null,
           relatedFiles: userData.related_files
             ? `data:application/octet-stream;base64,${userData.related_files}`
             : null,
+          relatedFilesFile: null,
         });
       } catch (error) {
         if (axios.isAxiosError(error)) {
@@ -87,6 +95,24 @@ export default function EditUser() {
     fetchUser();
   }, [id, user, isAuthLoading, router]);
 
+  // Clean up object URLs
+  useEffect(() => {
+    return () => {
+      if (formData.profilePicture?.startsWith("blob:")) {
+        URL.revokeObjectURL(formData.profilePicture);
+      }
+      if (formData.portfolio?.startsWith("blob:")) {
+        URL.revokeObjectURL(formData.portfolio);
+      }
+      if (formData.video?.startsWith("blob:")) {
+        URL.revokeObjectURL(formData.video);
+      }
+      if (formData.relatedFiles?.startsWith("blob:")) {
+        URL.revokeObjectURL(formData.relatedFiles);
+      }
+    };
+  }, [formData]);
+
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
@@ -100,11 +126,12 @@ export default function EditUser() {
   ) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData((prev) => ({ ...prev, [field]: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
+      const objectUrl = URL.createObjectURL(file);
+      setFormData((prev) => ({ ...prev, [field]: objectUrl }));
+
+      // Armazena o arquivo original para envio
+      const fileField = `${field}File` as keyof typeof formData;
+      setFormData((prev) => ({ ...prev, [fileField]: file }));
     }
   };
 
@@ -113,26 +140,40 @@ export default function EditUser() {
     setIsSubmitting(true);
     try {
       const token = localStorage.getItem("token");
-      const payload = {
-        name: formData.name,
-        email: formData.email,
-        bio: formData.bio,
-        area_of_expertise: formData.areaOfExpertise,
-        role: formData.role,
-        profile_picture: formData.profilePicture
-          ? formData.profilePicture.split(",")[1]
-          : null,
-        portfolio: formData.portfolio ? formData.portfolio.split(",")[1] : null,
-        video: formData.video ? formData.video.split(",")[1] : null,
-        related_files: formData.relatedFiles
-          ? formData.relatedFiles.split(",")[1]
-          : null,
-      };
-      await axios.put(`http://localhost:5000/api/users/${id}`, payload, {
-        headers: { Authorization: `Bearer ${token}` },
+      const formDataToSend = new FormData();
+
+      // Add text fields
+      formDataToSend.append("name", formData.name);
+      formDataToSend.append("email", formData.email);
+      formDataToSend.append("bio", formData.bio);
+      formDataToSend.append("area_of_expertise", formData.areaOfExpertise);
+      formDataToSend.append("role", formData.role);
+
+      // Add files if they exist - usando os arquivos originais
+      if (formData.profilePictureFile) {
+        formDataToSend.append("profile_picture", formData.profilePictureFile);
+      }
+      if (formData.portfolioFile) {
+        formDataToSend.append("portfolio", formData.portfolioFile);
+      }
+      if (formData.videoFile) {
+        formDataToSend.append("video", formData.videoFile);
+      }
+      if (formData.relatedFilesFile) {
+        formDataToSend.append("related_files", formData.relatedFilesFile);
+      }
+
+      await axios.put(`http://localhost:5000/api/users/${id}`, formDataToSend, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
       });
+
       toast.success("Perfil atualizado com sucesso!");
-      router.push("/search");
+      // Force refresh and redirect
+      router.refresh();
+      router.push(`/users/${id}`);
     } catch (error) {
       if (axios.isAxiosError(error)) {
         toast.error(
@@ -165,7 +206,7 @@ export default function EditUser() {
           Editar Perfil
         </h1>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Nome */}
+          {/* Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700">
               Nome <span className="text-red-500">*</span>
@@ -195,7 +236,7 @@ export default function EditUser() {
             />
           </div>
 
-          {/* Biografia */}
+          {/* Bio */}
           <div>
             <label className="block text-sm font-medium text-gray-700">
               Biografia
@@ -209,7 +250,7 @@ export default function EditUser() {
             />
           </div>
 
-          {/* Área de Atuação */}
+          {/* Area of Expertise */}
           <div>
             <label className="block text-sm font-medium text-gray-700">
               Área de Atuação
@@ -223,7 +264,7 @@ export default function EditUser() {
             />
           </div>
 
-          {/* Role (apenas para admin/secretary) */}
+          {/* Role (admin/secretary only) */}
           {isAdminOrSecretary && (
             <div>
               <label className="block text-sm font-medium text-gray-700">
@@ -245,7 +286,7 @@ export default function EditUser() {
             </div>
           )}
 
-          {/* Foto de Perfil */}
+          {/* Profile Picture */}
           <div>
             <label className="block text-sm font-medium text-gray-700">
               Foto de Perfil
@@ -263,13 +304,14 @@ export default function EditUser() {
                   alt="Preview"
                   width={128}
                   height={128}
-                  className="h-32 w-32 object-cover"
+                  className="h-32 w-32 object-cover rounded-full"
+                  key={formData.profilePicture}
                 />
               </div>
             )}
           </div>
 
-          {/* Portfólio */}
+          {/* Portfolio */}
           <div>
             <label className="block text-sm font-medium text-gray-700">
               Portfólio (PDF)
@@ -291,7 +333,7 @@ export default function EditUser() {
             )}
           </div>
 
-          {/* Vídeo */}
+          {/* Video */}
           <div>
             <label className="block text-sm font-medium text-gray-700">
               Vídeo
@@ -307,11 +349,12 @@ export default function EditUser() {
                 src={formData.video}
                 controls
                 className="mt-2 w-full max-w-md rounded-md"
+                key={formData.video}
               />
             )}
           </div>
 
-          {/* Arquivos Relacionados */}
+          {/* Related Files */}
           <div>
             <label className="block text-sm font-medium text-gray-700">
               Arquivos Relacionados
@@ -332,7 +375,7 @@ export default function EditUser() {
             )}
           </div>
 
-          {/* Botões */}
+          {/* Buttons */}
           <div className="flex flex-col sm:flex-row gap-4">
             <Button
               type="submit"
