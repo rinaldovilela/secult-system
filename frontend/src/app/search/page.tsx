@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react"; // Removido o useEffect não utilizado
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import axios from "axios";
@@ -17,6 +17,7 @@ import {
 import Link from "next/link";
 import Loading from "@/components/ui/loading";
 import { Calendar, Mail, User } from "lucide-react";
+import { getToken } from "@/lib/auth";
 
 type SearchResult = {
   type: "event" | "user";
@@ -40,7 +41,13 @@ export default function Search() {
   const handleSearch = async () => {
     setIsLoading(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken(); // Substituído localStorage por função segura
+      if (!token) {
+        toast.error("Token não encontrado. Faça login novamente.");
+        router.push("/login");
+        return;
+      }
+
       const response = await axios.get("http://localhost:5000/api/search", {
         params: { type: searchType, query },
         headers: {
