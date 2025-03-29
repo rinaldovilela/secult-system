@@ -86,9 +86,11 @@ export default function Header() {
   };
 
   useEffect(() => {
-    if (isAuthLoading || !authUser) return;
-    fetchUserProfile();
-  }, [isAuthLoading, authUser]);
+    const token = getToken();
+    if (token) {
+      fetchUserProfile();
+    }
+  }, []);
 
   const handleLogout = () => {
     setIsLoggingOut(true);

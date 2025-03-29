@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Loading from "@/components/ui/loading";
+import Image from "next/image";
 
 export default function EditUser() {
   const router = useRouter();
@@ -257,10 +258,12 @@ export default function EditUser() {
             />
             {formData.profilePicture && (
               <div className="mt-2">
-                <img
+                <Image
                   src={formData.profilePicture}
-                  alt="Foto de perfil"
-                  className="h-32 w-32 object-cover rounded-full"
+                  alt="Preview"
+                  width={128}
+                  height={128}
+                  className="h-32 w-32 object-cover"
                 />
               </div>
             )}

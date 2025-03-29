@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import Loading from "@/components/ui/loading";
+
 import Image from "next/image";
 
 export default function RegisterUser() {
