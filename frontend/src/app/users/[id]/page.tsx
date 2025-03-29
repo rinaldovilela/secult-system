@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import Loading from "@/components/ui/loading";
 import Link from "next/link";
 import { Calendar, Mail, User, FileText, Video, Download } from "lucide-react";
+import Image from "next/image";
 
 type UserDetails = {
   id: number;
@@ -128,10 +129,15 @@ export default function UserDetails() {
               {/* Foto de Perfil e Botões */}
               <div className="flex flex-col items-center">
                 {userDetails.profile_picture ? (
-                  <img
-                    src={getProfilePictureSrc(userDetails.profile_picture)}
+                  <Image
+                    src={
+                      getProfilePictureSrc(userDetails.profile_picture) || ""
+                    }
                     alt="Foto de perfil"
+                    width={128}
+                    height={128}
                     className="w-32 h-32 rounded-full object-cover mb-4"
+                    priority
                   />
                 ) : (
                   <div className="w-32 h-32 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 mb-4">
