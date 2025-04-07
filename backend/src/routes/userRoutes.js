@@ -706,6 +706,7 @@ router.get("/details/:id", authenticateToken, async (req, res) => {
 });
 
 // GET /api/users/:id - Buscar detalhes de um usuário
+// GET /api/users/:id - Atualizar para retornar mais dados
 router.get("/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -716,11 +717,12 @@ router.get("/:id", authenticateToken, async (req, res) => {
 
     const [users] = await db.query(
       `
-      SELECT u.id, u.name, u.email, u.role, u.created_at,
-             agd.bio, agd.area_of_expertise
+      SELECT u.id, u.name, u.email, u.role, u.created_at, u.cpf_cnpj, u.profile_picture,
+             agd.bio, agd.area_of_expertise, agd.portfolio, agd.video, 
+             agd.related_files, agd.birth_date, agd.address, agd.bank_details
       FROM users u
       LEFT JOIN artist_group_details agd ON u.id = agd.user_id
-      WHERE u.id = ? AND u.role IN ('artist', 'group')
+      WHERE u.id = ?
     `,
       [id]
     );
@@ -729,7 +731,33 @@ router.get("/:id", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "Usuário não encontrado" });
     }
 
-    res.status(200).json(users[0]);
+    const user = users[0];
+
+    // Converter buffers para base64 se existirem
+    if (user.profile_picture) {
+      user.profile_picture = Buffer.from(user.profile_picture).toString(
+        "base64"
+      );
+    }
+    if (user.portfolio) {
+      user.portfolio = Buffer.from(user.portfolio).toString("base64");
+    }
+    if (user.video) {
+      user.video = Buffer.from(user.video).toString("base64");
+    }
+    if (user.related_files) {
+      user.related_files = Buffer.from(user.related_files).toString("base64");
+    }
+
+    // Parse JSON fields if they are strings
+    if (typeof user.address === "string") {
+      user.address = JSON.parse(user.address);
+    }
+    if (typeof user.bank_details === "string") {
+      user.bank_details = JSON.parse(user.bank_details);
+    }
+
+    res.status(200).json(user);
   } catch (error) {
     console.error("Erro ao buscar usuário:", error);
     res.status(500).json({ error: "Erro ao buscar usuário" });

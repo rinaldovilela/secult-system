@@ -14,10 +14,15 @@ import {
   FileText,
   Video,
   Calendar,
+  Clock,
+  Banknote,
+  FileDigit,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Loading from "@/components/ui/loading";
 import { getToken } from "@/lib/auth";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 
 const BASE_URL = "http://localhost:5000";
 
@@ -25,11 +30,12 @@ interface UserDetails {
   id: string;
   name: string;
   email: string;
-  role: "artist" | "group";
+  role: "admin" | "secretary" | "artist" | "organizer" | "group";
   cpf_cnpj?: string;
   bio?: string;
   area_of_expertise?: string;
   birth_date?: string;
+  created_at?: string;
   address?: {
     cep?: string;
     logradouro?: string;
@@ -41,10 +47,13 @@ interface UserDetails {
   };
   bank_details?: {
     bank_name?: string;
-    account_type?: "corrente" | "poupanca";
+    account_type?: string;
     agency?: string;
     account_number?: string;
     pix_key?: string;
+    account_holder_name?: string;
+    account_holder_document?: string;
+    account_holder_type?: string;
   };
   profile_picture?: string;
   portfolio?: string;
@@ -122,6 +131,21 @@ export default function UserDetails() {
     }
   };
 
+  const formatDateTime = (dateString?: string) => {
+    if (!dateString) return "Não informado";
+    try {
+      return new Date(dateString).toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return "Data inválida";
+    }
+  };
+
   const formatCpfCnpj = (value?: string) => {
     if (!value) return "Não informado";
 
@@ -146,6 +170,40 @@ export default function UserDetails() {
     return cep;
   };
 
+  const getRoleBadge = (role?: string) => {
+    if (!role) return null;
+
+    const roleMap: Record<
+      string,
+      {
+        label: string;
+        variant: "default" | "secondary" | "destructive" | "outline";
+      }
+    > = {
+      admin: { label: "Administrador", variant: "destructive" },
+      secretary: { label: "Secretário", variant: "secondary" },
+      artist: { label: "Artista", variant: "default" },
+      group: { label: "Grupo Cultural", variant: "default" },
+      organizer: { label: "Organizador", variant: "outline" },
+    };
+
+    const roleInfo = roleMap[role] || { label: role, variant: "outline" };
+    return <Badge variant={roleInfo.variant}>{roleInfo.label}</Badge>;
+  };
+
+  const downloadFile = (
+    base64Data: string,
+    fileName: string,
+    mimeType: string
+  ) => {
+    const link = document.createElement("a");
+    link.href = `data:${mimeType};base64,${base64Data}`;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (isAuthLoading || isLoading) return <Loading />;
   if (!user || !["admin", "secretary"].includes(user.role)) {
     router.push("/login");
@@ -154,216 +212,319 @@ export default function UserDetails() {
   if (!userDetails) return null;
 
   return (
-    <div className="min-h-screen bg-gray-100 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto">
-        <div className="bg-white shadow-lg rounded-lg p-6 sm:p-8">
-          <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900">
-            Detalhes do{" "}
-            {userDetails.role === "artist" ? "Artista" : "Grupo Cultural"}
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto space-y-6">
+        {/* Cabeçalho */}
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+            Detalhes do Usuário
           </h1>
+          <Button variant="outline" onClick={() => router.push("/search")}>
+            Voltar
+          </Button>
+        </div>
 
-          {/* Dados Pessoais */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Dados Pessoais</h2>
-            <div className="flex items-center gap-2">
-              <User className="w-5 h-5 text-indigo-600" />
-              <p>
-                <strong>Nome:</strong> {userDetails.name}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Mail className="w-5 h-5 text-indigo-600" />
-              <p>
-                <strong>Email:</strong> {userDetails.email}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <User className="w-5 h-5 text-indigo-600" />
-              <p>
-                <strong>
-                  {userDetails.role === "artist" ? "CPF" : "CNPJ"}:
-                </strong>{" "}
-                {formatCpfCnpj(userDetails.cpf_cnpj)}
-              </p>
-            </div>
-            {userDetails.bio && (
-              <div>
-                <p>
-                  <strong>Biografia:</strong> {userDetails.bio}
-                </p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Coluna esquerda - Informações básicas */}
+          <div className="lg:col-span-1 space-y-6">
+            {/* Seção de perfil */}
+            <div className="bg-white shadow-sm rounded-lg p-6">
+              <h2 className="text-xl font-semibold mb-4">Perfil</h2>
+              <Separator className="my-4" />
+              {userDetails.profile_picture && (
+                <div className="flex justify-center mb-4">
+                  <div className="relative h-32 w-32 rounded-full overflow-hidden border-2 border-gray-200">
+                    <Image
+                      src={`data:image/jpeg;base64,${userDetails.profile_picture}`}
+                      alt="Foto de perfil"
+                      fill
+                      className="object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                        toast({
+                          title: "Erro ao carregar imagem",
+                          description:
+                            "A foto de perfil não pôde ser carregada.",
+                          variant: "destructive",
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">{userDetails.name}</h3>
+                  {getRoleBadge(userDetails.role)}
+                </div>
+
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Mail className="w-4 h-4" />
+                  <span>{userDetails.email}</span>
+                </div>
+
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <FileDigit className="w-4 h-4" />
+                  <span>{formatCpfCnpj(userDetails.cpf_cnpj)}</span>
+                </div>
+
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Clock className="w-4 h-4" />
+                  <span>
+                    Cadastrado em: {formatDateTime(userDetails.created_at)}
+                  </span>
+                </div>
               </div>
-            )}
-            {userDetails.area_of_expertise && (
-              <div className="flex items-center gap-2">
-                <User className="w-5 h-5 text-indigo-600" />
-                <p>
-                  <strong>Área de Atuação:</strong>{" "}
-                  {userDetails.area_of_expertise}
-                </p>
+            </div>
+
+            {/* Informações profissionais */}
+            <div className="bg-white shadow-sm rounded-lg p-6">
+              <h2 className="text-xl font-semibold mb-4">
+                Informações Profissionais
+              </h2>
+              <Separator className="my-4" />
+              <div className="space-y-4">
+                {userDetails.area_of_expertise && (
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">
+                      Área de Atuação
+                    </h4>
+                    <p>{userDetails.area_of_expertise}</p>
+                  </div>
+                )}
+
+                {userDetails.bio && (
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">
+                      Biografia
+                    </h4>
+                    <p className="whitespace-pre-line">{userDetails.bio}</p>
+                  </div>
+                )}
               </div>
-            )}
-            <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-indigo-600" />
-              <p>
-                <strong>Data de Nascimento:</strong>{" "}
-                {formatDate(userDetails.birth_date)}
-              </p>
             </div>
           </div>
 
-          {/* Endereço */}
-          {userDetails.address && (
-            <div className="bg-gray-50 p-6 rounded-lg space-y-4 mt-6">
-              <h2 className="text-xl font-semibold">Endereço</h2>
-              <div className="flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-indigo-600" />
-                <p>
-                  <strong>CEP:</strong> {formatCep(userDetails.address.cep)}
-                </p>
-              </div>
-              <p>
-                <strong>Logradouro:</strong>{" "}
-                {userDetails.address.logradouro || "Não informado"}
-              </p>
-              <p>
-                <strong>Número:</strong>{" "}
-                {userDetails.address.numero || "Não informado"}
-              </p>
-              {userDetails.address.complemento && (
-                <p>
-                  <strong>Complemento:</strong>{" "}
-                  {userDetails.address.complemento}
-                </p>
-              )}
-              <p>
-                <strong>Bairro:</strong>{" "}
-                {userDetails.address.bairro || "Não informado"}
-              </p>
-              <p>
-                <strong>Cidade:</strong>{" "}
-                {userDetails.address.cidade || "Não informado"}
-              </p>
-              <p>
-                <strong>Estado:</strong>{" "}
-                {userDetails.address.estado || "Não informado"}
-              </p>
-            </div>
-          )}
-
-          {/* Dados Bancários */}
-          {userDetails.bank_details && (
-            <div className="bg-gray-50 p-6 rounded-lg space-y-4 mt-6">
-              <h2 className="text-xl font-semibold">Dados Bancários</h2>
-              <div className="flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-indigo-600" />
-                <p>
-                  <strong>Banco:</strong>{" "}
-                  {userDetails.bank_details.bank_name || "Não informado"}
-                </p>
-              </div>
-              <p>
-                <strong>Tipo de Conta:</strong>{" "}
-                {userDetails.bank_details.account_type === "poupanca"
-                  ? "Conta Poupança"
-                  : "Conta Corrente"}
-              </p>
-              <p>
-                <strong>Agência:</strong>{" "}
-                {userDetails.bank_details.agency || "Não informado"}
-              </p>
-              <p>
-                <strong>Número da Conta:</strong>{" "}
-                {userDetails.bank_details.account_number || "Não informado"}
-              </p>
-              {userDetails.bank_details.pix_key && (
-                <p>
-                  <strong>Chave PIX:</strong> {userDetails.bank_details.pix_key}
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Mídias e Arquivos */}
-          <div className="bg-gray-50 p-6 rounded-lg space-y-4 mt-6">
-            <h2 className="text-xl font-semibold">Mídias e Arquivos</h2>
-            {userDetails.profile_picture && (
-              <div>
-                <p>
-                  <strong>Foto de Perfil:</strong>
-                </p>
-                <div className="mt-2 h-24 w-24 sm:h-32 sm:w-32 relative">
-                  <Image
-                    src={`${BASE_URL}${userDetails.profile_picture}`}
-                    alt="Foto de perfil"
-                    fill
-                    className="object-cover rounded"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                      toast({
-                        title: "Erro ao carregar imagem",
-                        description: "A foto de perfil não pôde ser carregada.",
-                        variant: "destructive",
-                      });
-                    }}
-                  />
+          {/* Coluna direita - Detalhes */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Endereço */}
+            {userDetails.address && (
+              <div className="bg-white shadow-sm rounded-lg p-6">
+                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                  <MapPin className="w-5 h-5" />
+                  <span>Endereço</span>
+                </h2>
+                <Separator className="my-4" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">CEP</h4>
+                    <p>{formatCep(userDetails.address.cep)}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">
+                      Logradouro
+                    </h4>
+                    <p>{userDetails.address.logradouro || "Não informado"}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">
+                      Número
+                    </h4>
+                    <p>{userDetails.address.numero || "Não informado"}</p>
+                  </div>
+                  {userDetails.address.complemento && (
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-500">
+                        Complemento
+                      </h4>
+                      <p>{userDetails.address.complemento}</p>
+                    </div>
+                  )}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">
+                      Bairro
+                    </h4>
+                    <p>{userDetails.address.bairro || "Não informado"}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">
+                      Cidade
+                    </h4>
+                    <p>{userDetails.address.cidade || "Não informado"}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">
+                      Estado
+                    </h4>
+                    <p>{userDetails.address.estado || "Não informado"}</p>
+                  </div>
                 </div>
               </div>
             )}
-            {userDetails.portfolio && (
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-indigo-600" />
-                <p>
-                  <strong>Portfólio:</strong>{" "}
-                  <a
-                    href={`${BASE_URL}${userDetails.portfolio}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-indigo-600 hover:underline"
-                  >
-                    Visualizar Portfólio
-                  </a>
-                </p>
-              </div>
-            )}
-            {userDetails.video && (
-              <div className="flex items-center gap-2">
-                <Video className="w-5 h-5 text-indigo-600" />
-                <p>
-                  <strong>Vídeo:</strong>{" "}
-                  <a
-                    href={`${BASE_URL}${userDetails.video}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-indigo-600 hover:underline"
-                  >
-                    Visualizar Vídeo
-                  </a>
-                </p>
-              </div>
-            )}
-            {userDetails.related_files && (
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-indigo-600" />
-                <p>
-                  <strong>Arquivos Relacionados:</strong>{" "}
-                  <a
-                    href={`${BASE_URL}${userDetails.related_files}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-indigo-600 hover:underline"
-                  >
-                    Visualizar Arquivos
-                  </a>
-                </p>
-              </div>
-            )}
-          </div>
 
-          {/* Botão Voltar */}
-          <div className="mt-6">
-            <Button variant="outline" onClick={() => router.push("/search")}>
-              Voltar
-            </Button>
+            {/* Dados bancários */}
+            {userDetails.bank_details && (
+              <div className="bg-white shadow-sm rounded-lg p-6">
+                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5" />
+                  <span>Dados Bancários</span>
+                </h2>
+                <Separator className="my-4" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">Banco</h4>
+                    <p>
+                      {userDetails.bank_details.bank_name || "Não informado"}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">
+                      Tipo de Conta
+                    </h4>
+                    <p>
+                      {userDetails.bank_details.account_type === "poupanca"
+                        ? "Conta Poupança"
+                        : "Conta Corrente"}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">
+                      Agência
+                    </h4>
+                    <p>{userDetails.bank_details.agency || "Não informado"}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">
+                      Número da Conta
+                    </h4>
+                    <p>
+                      {userDetails.bank_details.account_number ||
+                        "Não informado"}
+                    </p>
+                  </div>
+                  {userDetails.bank_details.pix_key && (
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-500">
+                        Chave PIX
+                      </h4>
+                      <p>{userDetails.bank_details.pix_key}</p>
+                    </div>
+                  )}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">
+                      Titular da Conta
+                    </h4>
+                    <p>
+                      {userDetails.bank_details.account_holder_name ||
+                        userDetails.name}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">
+                      Documento do Titular
+                    </h4>
+                    <p>
+                      {formatCpfCnpj(
+                        userDetails.bank_details.account_holder_document
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500">
+                      Tipo de Titular
+                    </h4>
+                    <p>
+                      {userDetails.bank_details.account_holder_type ===
+                      "individual"
+                        ? "Pessoa Física"
+                        : "Pessoa Jurídica"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Arquivos e mídias */}
+            <div className="bg-white shadow-sm rounded-lg p-6">
+              <h2 className="text-xl font-semibold mb-4">Arquivos e Mídias</h2>
+              <Separator className="my-4" />
+              <div className="space-y-4">
+                {(userDetails.portfolio ||
+                  userDetails.video ||
+                  userDetails.related_files) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {userDetails.portfolio && (
+                      <div className="border rounded-lg p-4 flex flex-col items-center">
+                        <FileText className="w-8 h-8 text-indigo-600 mb-2" />
+                        <p className="text-sm font-medium mb-2">Portfólio</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            downloadFile(
+                              userDetails.portfolio!,
+                              `portfolio-${userDetails.name}.pdf`,
+                              "application/pdf"
+                            )
+                          }
+                        >
+                          Baixar
+                        </Button>
+                      </div>
+                    )}
+
+                    {userDetails.video && (
+                      <div className="border rounded-lg p-4 flex flex-col items-center">
+                        <Video className="w-8 h-8 text-indigo-600 mb-2" />
+                        <p className="text-sm font-medium mb-2">Vídeo</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            downloadFile(
+                              userDetails.video!,
+                              `video-${userDetails.name}.mp4`,
+                              "video/mp4"
+                            )
+                          }
+                        >
+                          Baixar
+                        </Button>
+                      </div>
+                    )}
+
+                    {userDetails.related_files && (
+                      <div className="border rounded-lg p-4 flex flex-col items-center">
+                        <FileText className="w-8 h-8 text-indigo-600 mb-2" />
+                        <p className="text-sm font-medium mb-2">Documentos</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            downloadFile(
+                              userDetails.related_files!,
+                              `documentos-${userDetails.name}.zip`,
+                              "application/zip"
+                            )
+                          }
+                        >
+                          Baixar
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!userDetails.portfolio &&
+                  !userDetails.video &&
+                  !userDetails.related_files && (
+                    <p className="text-sm text-gray-500">
+                      Nenhum arquivo enviado
+                    </p>
+                  )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
