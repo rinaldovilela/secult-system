@@ -4,6 +4,8 @@ const db = require("../config/db");
 const { authenticateToken } = require("../middleware/auth");
 const bcrypt = require("bcrypt");
 const multer = require("multer");
+const cpfCnpjValidator = require("cpf-cnpj-validator"); // Para validação de CPF/CNPJ
+const { cpf, cnpj } = cpfCnpjValidator;
 
 // Log para verificar se o arquivo de rotas está sendo acessado
 router.use((req, res, next) => {
@@ -32,6 +34,76 @@ const handleMulterError = (err, req, res, next) => {
   next(err);
 };
 
+// Middleware para validar dados de artista/grupo
+const validateArtistData = async (req, res, next) => {
+  if (["artist", "group"].includes(req.body.role)) {
+    try {
+      // Validar address
+      const address =
+        typeof req.body.address === "string"
+          ? JSON.parse(req.body.address)
+          : req.body.address;
+
+      if (
+        !address ||
+        !address.cep ||
+        !address.logradouro ||
+        !address.numero ||
+        !address.bairro ||
+        !address.cidade ||
+        !address.estado
+      ) {
+        return res.status(400).json({
+          error: "Endereço incompleto",
+          required_fields: [
+            "cep",
+            "logradouro",
+            "numero",
+            "bairro",
+            "cidade",
+            "estado",
+          ],
+        });
+      }
+
+      // Validar bank_details
+      const bankDetails =
+        typeof req.body.bank_details === "string"
+          ? JSON.parse(req.body.bank_details)
+          : req.body.bank_details;
+
+      if (
+        !bankDetails ||
+        !bankDetails.bank_name ||
+        !bankDetails.account_type ||
+        !bankDetails.agency ||
+        !bankDetails.account_number
+      ) {
+        return res.status(400).json({
+          error: "Dados bancários incompletos",
+          required_fields: [
+            "bank_name",
+            "account_type",
+            "agency",
+            "account_number",
+          ],
+        });
+      }
+
+      // Adicionar os objetos parseados de volta ao req.body
+      req.body.address = address;
+      req.body.bank_details = bankDetails;
+    } catch (error) {
+      return res.status(400).json({
+        error: "Erro ao processar JSON",
+        details: error.message,
+      });
+    }
+  }
+  next();
+};
+
+// POST /api/users/register - Registro de usuário (artist ou group)
 router.post(
   "/register",
   upload.fields([
@@ -41,62 +113,112 @@ router.post(
     { name: "related_files", maxCount: 1 },
   ]),
   handleMulterError,
+  validateArtistData,
   async (req, res) => {
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
     try {
       const {
         name,
         email,
         password,
         role = "artist",
+        cpf_cnpj,
         bio = "",
         area_of_expertise = "",
+        birth_date,
+        address,
+        bank_details,
       } = req.body;
+
       const files = req.files;
 
       // Validações básicas
-      if (!name || !email || !password) {
-        return res
-          .status(400)
-          .json({ error: "Nome, email e senha são obrigatórios" });
+      if (!name || !email || !password || !cpf_cnpj) {
+        throw new Error("Nome, email, senha e CPF/CNPJ são obrigatórios");
+      }
+
+      // Validar CPF/CNPJ
+      if (!cpf.isValid(cpf_cnpj) && !cnpj.isValid(cpf_cnpj)) {
+        throw new Error("CPF ou CNPJ inválido");
       }
 
       // Verificar se email já existe
-      const [existing] = await db.query("SELECT * FROM users WHERE email = ?", [
-        email,
-      ]);
+      const [existing] = await connection.query(
+        "SELECT * FROM users WHERE email = ?",
+        [email]
+      );
+
       if (existing.length > 0) {
-        return res.status(400).json({ error: "Email já está em uso" });
+        throw new Error("Email já está em uso");
       }
 
+      // Inserir na tabela users
       const hashedPassword = await bcrypt.hash(password, 10);
-
-      // Inserir no banco
-      await db.query(
-        `INSERT INTO users (name, email, password, role, bio, area_of_expertise,
-         profile_picture, portfolio, video, related_files, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      const [userResult] = await connection.query(
+        `INSERT INTO users (
+          name, email, password, role, cpf_cnpj, 
+          profile_picture, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
         [
           name,
           email,
           hashedPassword,
           role,
-          bio,
-          area_of_expertise,
-          files?.profile_picture?.[0]?.buffer,
-          files?.portfolio?.[0]?.buffer,
-          files?.video?.[0]?.buffer,
-          files?.related_files?.[0]?.buffer,
+          cpf_cnpj,
+          files?.profile_picture?.[0]?.buffer || null,
         ]
       );
 
-      res.status(201).json({ message: "Registro realizado com sucesso" });
+      const userId = userResult.insertId;
+
+      // Inserir na tabela artist_group_details se for artista/grupo
+      if (["artist", "group"].includes(role)) {
+        await connection.query(
+          `INSERT INTO artist_group_details (
+            user_id, bio, area_of_expertise, portfolio, 
+            video, related_files, birth_date, address, bank_details
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId,
+            bio,
+            area_of_expertise,
+            files?.portfolio?.[0]?.buffer || null,
+            files?.video?.[0]?.buffer || null,
+            files?.related_files?.[0]?.buffer || null,
+            birth_date || null,
+            JSON.stringify(address),
+            JSON.stringify({
+              ...bank_details,
+              account_holder_name: name,
+              account_holder_document: cpf_cnpj,
+              account_holder_type: role === "artist" ? "individual" : "company",
+            }),
+          ]
+        );
+      }
+
+      await connection.commit();
+      res.status(201).json({
+        success: true,
+        message: "Usuário registrado com sucesso",
+        userId,
+      });
     } catch (error) {
+      await connection.rollback();
       console.error("Erro no registro:", error);
-      res.status(500).json({ error: "Erro durante o registro" });
+      res.status(400).json({
+        success: false,
+        error: error.message || "Erro durante o registro",
+      });
+    } finally {
+      connection.release();
     }
   }
 );
 
+// GET /api/users/artists - Listar artistas e grupos
 router.get("/artists", authenticateToken, async (req, res) => {
   try {
     if (!["admin", "secretary"].includes(req.user.role)) {
@@ -120,7 +242,13 @@ router.get("/artists", authenticateToken, async (req, res) => {
 router.get("/me", authenticateToken, async (req, res) => {
   try {
     const [users] = await db.query(
-      "SELECT id, name, email, role, profile_picture FROM users WHERE id = ?",
+      `
+      SELECT u.id, u.name, u.email, u.role, u.profile_picture,
+             agd.bio, agd.area_of_expertise, agd.birth_date, agd.address, agd.bank_details
+      FROM users u
+      LEFT JOIN artist_group_details agd ON u.id = agd.user_id
+      WHERE u.id = ?
+    `,
       [req.user.id]
     );
 
@@ -157,14 +285,27 @@ router.put(
         ? files.profile_picture[0].buffer
         : null;
 
+      // Atualizar na tabela users
       await db.query(
         `
         UPDATE users
-        SET name = ?, bio = ?, area_of_expertise = ?, profile_picture = COALESCE(?, profile_picture)
+        SET name = ?, profile_picture = COALESCE(?, profile_picture)
         WHERE id = ?
       `,
-        [name, bio, area_of_expertise, profilePicture, req.user.id]
+        [name, profilePicture, req.user.id]
       );
+
+      // Atualizar na tabela artist_group_details (se for artist ou group)
+      if (["artist", "group"].includes(req.user.role)) {
+        await db.query(
+          `
+          UPDATE artist_group_details
+          SET bio = ?, area_of_expertise = ?
+          WHERE user_id = ?
+        `,
+          [bio, area_of_expertise, req.user.id]
+        );
+      }
 
       res.status(200).json({ message: "Perfil atualizado com sucesso" });
     } catch (error) {
@@ -205,6 +346,7 @@ router.get("/me/events", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Erro ao listar eventos do usuário" });
   }
 });
+
 // POST /api/users - Cadastrar um novo artista ou grupo cultural
 router.post(
   "/",
@@ -218,23 +360,87 @@ router.post(
   handleMulterError,
   async (req, res) => {
     try {
-      const { name, email, password, role } = req.body;
+      const {
+        name,
+        email,
+        password,
+        role,
+        cpf_cnpj, // Novo campo (obrigatório para todos)
+        bio = "",
+        area_of_expertise = "",
+        birth_date, // Novo campo (opcional)
+        address, // Novo campo (JSON, obrigatório para artist/group)
+        bank_details, // Novo campo (JSON, obrigatório para artist/group)
+      } = req.body;
       const files = req.files;
 
+      // Validações básicas
       if (!name || !email || !password || !role) {
         return res.status(400).json({ error: "Campos obrigatórios ausentes" });
       }
 
+      // Validar role
       if (!["artist", "group"].includes(role)) {
         return res
           .status(400)
           .json({ error: "Role inválido. Use 'artist' ou 'group'" });
       }
 
+      // Verificar permissão
       if (!["admin", "secretary"].includes(req.user.role)) {
         return res.status(403).json({ error: "Acesso negado" });
       }
 
+      // Validar CPF/CNPJ
+      if (!cpf_cnpj || (!cpf.isValid(cpf_cnpj) && !cnpj.isValid(cpf_cnpj))) {
+        return res.status(400).json({ error: "CPF ou CNPJ inválido" });
+      }
+
+      // Validar campos obrigatórios para artist/group
+      if (["artist", "group"].includes(role)) {
+        if (!address || !bank_details) {
+          return res.status(400).json({
+            error:
+              "Endereço e dados bancários são obrigatórios para artistas/grupos",
+          });
+        }
+
+        // Validar estrutura do address (JSON)
+        const addressObj =
+          typeof address === "string" ? JSON.parse(address) : address;
+        if (
+          !addressObj.cep ||
+          !addressObj.logradouro ||
+          !addressObj.numero ||
+          !addressObj.bairro ||
+          !addressObj.cidade ||
+          !addressObj.estado
+        ) {
+          return res.status(400).json({
+            error:
+              "Endereço deve conter cep, logradouro, numero, bairro, cidade e estado",
+          });
+        }
+
+        // Validar estrutura do bank_details (JSON)
+        const bankDetailsObj =
+          typeof bank_details === "string"
+            ? JSON.parse(bank_details)
+            : bank_details;
+        if (
+          !bankDetailsObj.bank_name ||
+          !bankDetailsObj.account_type ||
+          !bankDetailsObj.agency ||
+          !bankDetailsObj.account_number
+        ) {
+          return res.status(400).json({
+            error:
+              "Dados bancários devem conter bank_name, account_type, agency e account_number",
+          });
+        }
+      }
+
+      // Verificar se email já existe
       const [existing] = await db.query("SELECT * FROM users WHERE email = ?", [
         email,
       ]);
@@ -247,28 +453,44 @@ router.post(
       const profilePicture = files?.profile_picture
         ? files.profile_picture[0].buffer
         : null;
-      const portfolio = files?.portfolio ? files.portfolio[0].buffer : null;
-      const video = files?.video ? files.video[0].buffer : null;
-      const relatedFiles = files?.related_files
-        ? files.related_files[0].buffer
-        : null;
 
-      await db.query(
+      // Inserir na tabela users
+      const [result] = await db.query(
         `
-        INSERT INTO users (name, email, password, role, profile_picture, portfolio, video, related_files, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        INSERT INTO users (name, email, password, role, cpf_cnpj, profile_picture, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, NOW())
       `,
-        [
-          name,
-          email,
-          hashedPassword,
-          role,
-          profilePicture,
-          portfolio,
-          video,
-          relatedFiles,
-        ]
+        [name, email, hashedPassword, role, cpf_cnpj, profilePicture]
       );
+
+      const userId = result.insertId;
+
+      // Inserir na tabela artist_group_details (se for artist ou group)
+      if (["artist", "group"].includes(role)) {
+        const portfolio = files?.portfolio ? files.portfolio[0].buffer : null;
+        const video = files?.video ? files.video[0].buffer : null;
+        const relatedFiles = files?.related_files
+          ? files.related_files[0].buffer
+          : null;
+
+        await db.query(
+          `
+          INSERT INTO artist_group_details (user_id, bio, area_of_expertise, portfolio, video, related_files, birth_date, address, bank_details)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+          [
+            userId,
+            bio,
+            area_of_expertise,
+            portfolio,
+            video,
+            relatedFiles,
+            birth_date || null,
+            JSON.stringify(addressObj),
+            JSON.stringify(bankDetailsObj),
+          ]
+        );
+      }
 
       res.status(201).json({ message: "Usuário cadastrado com sucesso" });
     } catch (error) {
@@ -292,7 +514,16 @@ router.put(
   async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, email, bio, area_of_expertise, role } = req.body;
+      const {
+        name,
+        email,
+        bio,
+        area_of_expertise,
+        role,
+        birth_date,
+        address,
+        bank_details,
+      } = req.body;
       const files = req.files;
 
       // Verificar se o usuário tem permissão (admin ou secretary)
@@ -331,34 +562,90 @@ router.put(
         ? files.related_files[0].buffer
         : null;
 
-      // Atualizar o usuário no banco de dados
+      // Atualizar na tabela users
       const [result] = await db.query(
         `
         UPDATE users
-        SET name = ?, email = ?, bio = ?, area_of_expertise = ?, role = ?,
-            profile_picture = COALESCE(?, profile_picture),
-            portfolio = COALESCE(?, portfolio),
-            video = COALESCE(?, video),
-            related_files = COALESCE(?, related_files)
+        SET name = ?, email = ?, role = ?, profile_picture = COALESCE(?, profile_picture)
         WHERE id = ?
       `,
-        [
-          name,
-          email,
-          bio,
-          area_of_expertise,
-          role,
-          profilePicture,
-          portfolio,
-          video,
-          relatedFiles,
-          id,
-        ]
+        [name, email, role, profilePicture, id]
       );
 
       // Verificar se o usuário foi encontrado e atualizado
       if (result.affectedRows === 0) {
         return res.status(404).json({ error: "Usuário não encontrado" });
+      }
+
+      // Atualizar na tabela artist_group_details (se for artist ou group)
+      if (["artist", "group"].includes(role)) {
+        const addressObj =
+          address && typeof address === "string"
+            ? JSON.parse(address)
+            : address;
+        const bankDetailsObj =
+          bank_details && typeof bank_details === "string"
+            ? JSON.parse(bank_details)
+            : bank_details;
+
+        // Verificar se o registro já existe em artist_group_details
+        const [existingDetails] = await db.query(
+          "SELECT * FROM artist_group_details WHERE user_id = ?",
+          [id]
+        );
+
+        if (existingDetails.length > 0) {
+          // Atualizar registro existente
+          await db.query(
+            `
+            UPDATE artist_group_details
+            SET bio = ?, area_of_expertise = ?, portfolio = COALESCE(?, portfolio),
+                video = COALESCE(?, video), related_files = COALESCE(?, related_files),
+                birth_date = ?, address = ?, bank_details = ?
+            WHERE user_id = ?
+          `,
+            [
+              bio,
+              area_of_expertise,
+              portfolio,
+              video,
+              relatedFiles,
+              birth_date || null,
+              addressObj
+                ? JSON.stringify(addressObj)
+                : existingDetails[0].address,
+              bankDetailsObj
+                ? JSON.stringify(bankDetailsObj)
+                : existingDetails[0].bank_details,
+              id,
+            ]
+          );
+        } else {
+          // Inserir novo registro (caso o usuário tenha mudado de role para artist/group)
+          if (!addressObj || !bankDetailsObj) {
+            return res.status(400).json({
+              error:
+                "Endereço e dados bancários são obrigatórios para artistas/grupos",
+            });
+          }
+          await db.query(
+            `
+            INSERT INTO artist_group_details (user_id, bio, area_of_expertise, portfolio, video, related_files, birth_date, address, bank_details)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+            [
+              id,
+              bio,
+              area_of_expertise,
+              portfolio,
+              video,
+              relatedFiles,
+              birth_date || null,
+              JSON.stringify(addressObj),
+              JSON.stringify(bankDetailsObj),
+            ]
+          );
+        }
       }
 
       res.status(200).json({ message: "Usuário atualizado com sucesso" });
@@ -369,6 +656,7 @@ router.put(
   }
 );
 
+// GET /api/users/details/:id - Buscar detalhes completos de um usuário
 router.get("/details/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -380,9 +668,12 @@ router.get("/details/:id", authenticateToken, async (req, res) => {
 
     const [users] = await db.query(
       `
-      SELECT id, name, email, role, created_at, bio, area_of_expertise, profile_picture, portfolio, video, related_files
-      FROM users
-      WHERE id = ? AND role IN ('artist', 'group')
+      SELECT u.id, u.name, u.email, u.role, u.created_at, u.profile_picture,
+             agd.bio, agd.area_of_expertise, agd.portfolio, agd.video, agd.related_files,
+             agd.birth_date, agd.address, agd.bank_details
+      FROM users u
+      LEFT JOIN artist_group_details agd ON u.id = agd.user_id
+      WHERE u.id = ? AND u.role IN ('artist', 'group')
     `,
       [id]
     );
@@ -391,7 +682,23 @@ router.get("/details/:id", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "Usuário não encontrado" });
     }
 
-    res.status(200).json(users[0]);
+    const user = users[0];
+    if (user.profile_picture) {
+      user.profile_picture = Buffer.from(user.profile_picture).toString(
+        "base64"
+      );
+    }
+    if (user.portfolio) {
+      user.portfolio = Buffer.from(user.portfolio).toString("base64");
+    }
+    if (user.video) {
+      user.video = Buffer.from(user.video).toString("base64");
+    }
+    if (user.related_files) {
+      user.related_files = Buffer.from(user.related_files).toString("base64");
+    }
+
+    res.status(200).json(user);
   } catch (error) {
     console.error("Erro ao buscar detalhes do usuário:", error);
     res.status(500).json({ error: "Erro ao buscar detalhes do usuário" });
@@ -409,9 +716,11 @@ router.get("/:id", authenticateToken, async (req, res) => {
 
     const [users] = await db.query(
       `
-      SELECT id, name, email, role, created_at, bio, area_of_expertise
-      FROM users
-      WHERE id = ? AND role IN ('artist', 'group')
+      SELECT u.id, u.name, u.email, u.role, u.created_at,
+             agd.bio, agd.area_of_expertise
+      FROM users u
+      LEFT JOIN artist_group_details agd ON u.id = agd.user_id
+      WHERE u.id = ? AND u.role IN ('artist', 'group')
     `,
       [id]
     );

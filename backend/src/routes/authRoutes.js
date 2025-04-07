@@ -3,12 +3,14 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const db = require("../config/db");
 const { authenticateToken, authorizeRole } = require("../middleware/auth");
+const cpfCnpjValidator = require("cpf-cnpj-validator"); // Para validação de CPF/CNPJ
+const { cpf, cnpj } = cpfCnpjValidator;
 
 const router = express.Router();
 
-// Registro de usuário
+// Registro de usuário (admin ou secretary)
 router.post("/register", authenticateToken, async (req, res) => {
-  const { name, email, password, role } = req.body;
+  const { name, email, password, role, cpf_cnpj } = req.body;
 
   if (!name || !email || !password || !role) {
     return res.status(400).json({ error: "Todos os campos são obrigatórios" });
@@ -25,6 +27,11 @@ router.post("/register", authenticateToken, async (req, res) => {
     });
   }
 
+  // Validar CPF/CNPJ (opcional para admin/secretary, mas deve ser válido se fornecido)
+  if (cpf_cnpj && !cpf.isValid(cpf_cnpj) && !cnpj.isValid(cpf_cnpj)) {
+    return res.status(400).json({ error: "CPF ou CNPJ inválido" });
+  }
+
   try {
     const [existingUser] = await db.query(
       "SELECT * FROM users WHERE email = ?",
@@ -36,8 +43,8 @@ router.post("/register", authenticateToken, async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const [result] = await db.query(
-      "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)",
-      [name, email, hashedPassword, role]
+      "INSERT INTO users (name, email, password, role, cpf_cnpj, created_at) VALUES (?, ?, ?, ?, ?, NOW())",
+      [name, email, hashedPassword, role, cpf_cnpj || null]
     );
 
     res.status(201).json({ id: result.insertId, name, email, role });
