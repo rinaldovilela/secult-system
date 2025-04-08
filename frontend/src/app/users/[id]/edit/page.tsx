@@ -41,6 +41,23 @@ import {
 import Loading from "@/components/ui/loading";
 import { getToken } from "@/lib/auth";
 import { z } from "zod";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // Schema de validação para edição (sem campo de senha)
 const editUserSchema = z.object({
@@ -126,6 +143,9 @@ export default function EditUserPage() {
   const [cepStatus, setCepStatus] = useState<
     "idle" | "loading" | "success" | "error"
   >("idle");
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
 
   const form = useForm<EditUserFormData>({
     resolver: zodResolver(editUserSchema),
@@ -1017,11 +1037,107 @@ export default function EditUserPage() {
                 >
                   Cancelar
                 </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setShowPasswordDialog(true)}
+                  disabled={isSubmitting}
+                >
+                  Alterar Senha
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => setShowDeleteDialog(true)}
+                  disabled={isSubmitting}
+                >
+                  Deletar Usuário
+                </Button>
               </div>
             </form>
           </Form>
         </div>
       </div>
+
+      {/* Diálogo de Confirmação para Deletar */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja deletar este usuário? Esta ação não pode
+              ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                try {
+                  await axios.delete(`http://localhost:5000/api/users/${id}`, {
+                    headers: { Authorization: `Bearer ${getToken()}` },
+                  });
+                  toast({ title: "Usuário deletado com sucesso" });
+                  router.push("/search");
+                } catch (error) {
+                  toast({
+                    title: "Erro ao deletar usuário",
+                    description: axios.isAxiosError(error)
+                      ? error.response?.data?.error || error.message
+                      : "Ocorreu um erro inesperado",
+                    variant: "destructive",
+                  });
+                }
+              }}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Diálogo para Alterar Senha */}
+      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Alterar Senha</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Input
+              type="password"
+              placeholder="Nova senha"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={async () => {
+                try {
+                  await axios.put(
+                    `http://localhost:5000/api/users/${id}/password`,
+                    { new_password: newPassword },
+                    { headers: { Authorization: `Bearer ${getToken()}` } }
+                  );
+                  toast({ title: "Senha alterada com sucesso" });
+                  setShowPasswordDialog(false);
+                  setNewPassword("");
+                } catch (error) {
+                  toast({
+                    title: "Erro ao alterar senha",
+                    description: axios.isAxiosError(error)
+                      ? error.response?.data?.error || error.message
+                      : "Ocorreu um erro inesperado",
+                    variant: "destructive",
+                  });
+                }
+              }}
+            >
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

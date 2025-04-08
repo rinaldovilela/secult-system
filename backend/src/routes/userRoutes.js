@@ -520,6 +520,7 @@ router.put(
         bio,
         area_of_expertise,
         role,
+        cpf_cnpj, // Adicione este campo
         birth_date,
         address,
         bank_details,
@@ -532,8 +533,14 @@ router.put(
       }
 
       // Validar campos obrigatórios
-      if (!name || !email || !role) {
+      if (!name || !email || !role || !cpf_cnpj) {
+        // Adicione cpf_cnpj como obrigatório
         return res.status(400).json({ error: "Campos obrigatórios ausentes" });
+      }
+
+      // Validar CPF/CNPJ
+      if (!cpf.isValid(cpf_cnpj) && !cnpj.isValid(cpf_cnpj)) {
+        return res.status(400).json({ error: "CPF ou CNPJ inválido" });
       }
 
       // Validar role
@@ -562,14 +569,14 @@ router.put(
         ? files.related_files[0].buffer
         : null;
 
-      // Atualizar na tabela users
+      // Atualizar na tabela users (adicione cpf_cnpj)
       const [result] = await db.query(
         `
         UPDATE users
-        SET name = ?, email = ?, role = ?, profile_picture = COALESCE(?, profile_picture)
+        SET name = ?, email = ?, role = ?, cpf_cnpj = ?, profile_picture = COALESCE(?, profile_picture)
         WHERE id = ?
       `,
-        [name, email, role, profilePicture, id]
+        [name, email, role, cpf_cnpj, profilePicture, id]
       );
 
       // Verificar se o usuário foi encontrado e atualizado
@@ -706,7 +713,6 @@ router.get("/details/:id", authenticateToken, async (req, res) => {
 });
 
 // GET /api/users/:id - Buscar detalhes de um usuário
-// GET /api/users/:id - Atualizar para retornar mais dados
 router.get("/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -761,6 +767,97 @@ router.get("/:id", authenticateToken, async (req, res) => {
   } catch (error) {
     console.error("Erro ao buscar usuário:", error);
     res.status(500).json({ error: "Erro ao buscar usuário" });
+  }
+});
+
+// DELETE /api/users/:id - Deletar um usuário específico (apenas admin ou secretary)
+router.delete("/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar se o usuário tem permissão (admin ou secretary)
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    // Verificar se o usuário existe
+    const [user] = await db.query("SELECT * FROM users WHERE id = ?", [id]);
+    if (user.length === 0) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    // Iniciar transação
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      // Deletar da tabela artist_group_details primeiro (se existir)
+      await connection.query(
+        "DELETE FROM artist_group_details WHERE user_id = ?",
+        [id]
+      );
+
+      // Deletar da tabela users
+      const [result] = await connection.query(
+        "DELETE FROM users WHERE id = ?",
+        [id]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new Error("Nenhum usuário foi deletado");
+      }
+
+      await connection.commit();
+      res.status(200).json({ message: "Usuário deletado com sucesso" });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error("Erro ao deletar usuário:", error);
+    res.status(500).json({
+      error: error.message || "Erro ao deletar usuário",
+    });
+  }
+});
+
+// PUT /api/users/:id/password - Alterar senha do usuário (apenas admin ou secretary)
+router.put("/:id/password", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { new_password } = req.body;
+
+    // Verificar se o usuário tem permissão (admin ou secretary)
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    // Validar campos obrigatórios
+    if (!new_password) {
+      return res.status(400).json({ error: "Nova senha é obrigatória" });
+    }
+
+    // Verificar se o usuário existe
+    const [user] = await db.query("SELECT * FROM users WHERE id = ?", [id]);
+    if (user.length === 0) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    // Hash da nova senha
+    const hashedPassword = await bcrypt.hash(new_password, 10);
+
+    // Atualizar senha
+    await db.query("UPDATE users SET password = ? WHERE id = ?", [
+      hashedPassword,
+      id,
+    ]);
+
+    res.status(200).json({ message: "Senha atualizada com sucesso" });
+  } catch (error) {
+    console.error("Erro ao atualizar senha:", error);
+    res.status(500).json({ error: "Erro ao atualizar senha" });
   }
 });
 
