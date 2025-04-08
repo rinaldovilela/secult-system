@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 
 interface Artist {
-  id: number;
+  id: string;
   name: string;
   email: string;
   bio?: string;
@@ -36,7 +36,7 @@ interface Artist {
 }
 
 interface Event {
-  id: number;
+  id: string;
   title: string;
   description?: string;
   date: string;

@@ -14,16 +14,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 import Loading from "@/components/ui/loading";
 import { Calendar, MapPin, Users, FileText, DollarSign } from "lucide-react";
 
 interface Artist {
-  id: number;
+  id: string;
   name: string;
 }
 
 interface EventArtist {
-  artist_id: number;
+  artist_id: string;
   artist_name: string;
   amount: number;
 }
@@ -84,15 +85,13 @@ export default function NewEvent() {
       return;
     }
 
-    const artist = artists.find((a) => a.id === parseInt(selectedArtistId));
+    const artist = artists.find((a) => a.id === selectedArtistId);
     if (!artist) {
       toast.error("Artista não encontrado");
       return;
     }
 
-    if (
-      eventArtists.some((ea) => ea.artist_id === parseInt(selectedArtistId))
-    ) {
+    if (eventArtists.some((ea) => ea.artist_id === selectedArtistId)) {
       toast.error("Artista já adicionado ao evento");
       return;
     }
@@ -100,7 +99,7 @@ export default function NewEvent() {
     setEventArtists([
       ...eventArtists,
       {
-        artist_id: parseInt(selectedArtistId),
+        artist_id: selectedArtistId,
         artist_name: artist.name,
         amount: parseFloat(artistAmount),
       },
@@ -109,8 +108,22 @@ export default function NewEvent() {
     setArtistAmount("");
   };
 
-  const handleRemoveArtist = (artistId: number) => {
+  const handleRemoveArtist = (artistId: string) => {
     setEventArtists(eventArtists.filter((ea) => ea.artist_id !== artistId));
+  };
+
+  const handleUpdateArtistAmount = (artistId: string, newAmount: string) => {
+    const parsedAmount = parseFloat(newAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      toast.error("Por favor, insira um valor válido.");
+      return;
+    }
+
+    setEventArtists(
+      eventArtists.map((ea) =>
+        ea.artist_id === artistId ? { ...ea, amount: parsedAmount } : ea
+      )
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -146,6 +159,11 @@ export default function NewEvent() {
       }
     }
   };
+
+  const artistOptions = artists.map((artist) => ({
+    value: artist.id,
+    label: artist.name,
+  }));
 
   if (isAuthLoading || isLoading) return <Loading />;
   if (!user || !["admin", "secretary"].includes(user.role)) return null;
@@ -236,24 +254,13 @@ export default function NewEvent() {
                   <label className="block text-sm font-medium text-gray-700">
                     Artista
                   </label>
-                  <Select
-                    onValueChange={setSelectedArtistId}
+                  <Combobox
+                    options={artistOptions}
                     value={selectedArtistId}
-                  >
-                    <SelectTrigger className="mt-1 w-full">
-                      <SelectValue placeholder="Selecione um artista" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {artists.map((artist) => (
-                        <SelectItem
-                          key={artist.id}
-                          value={artist.id.toString()}
-                        >
-                          {artist.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={setSelectedArtistId}
+                    placeholder="Selecione um artista..."
+                    className="mt-1"
+                  />
                 </div>
                 <div className="flex-1">
                   <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
@@ -276,15 +283,26 @@ export default function NewEvent() {
               </div>
 
               {eventArtists.length > 0 ? (
-                <ul className="list-disc list-inside space-y-2">
+                <ul className="space-y-2">
                   {eventArtists.map((ea) => (
                     <li
                       key={ea.artist_id}
-                      className="flex justify-between items-center"
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 bg-gray-100 rounded-md"
                     >
-                      <span>
-                        {ea.artist_name} - R$ {ea.amount.toFixed(2)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span>{ea.artist_name}</span>
+                        <Input
+                          type="number"
+                          value={ea.amount.toString()}
+                          onChange={(e) =>
+                            handleUpdateArtistAmount(
+                              ea.artist_id,
+                              e.target.value
+                            )
+                          }
+                          className="w-32 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        />
+                      </div>
                       <Button
                         variant="destructive"
                         size="sm"
