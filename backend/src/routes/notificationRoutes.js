@@ -3,9 +3,23 @@ const router = express.Router();
 const db = require("../config/db");
 const { authenticateToken } = require("../middleware/auth");
 
+// Função auxiliar para validar UUID
+const isValidUUID = (uuid) => {
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+};
+
 // GET /api/notifications - Listar notificações do usuário logado
 router.get("/", authenticateToken, async (req, res) => {
   try {
+    // Validar se req.user.id é um UUID válido
+    if (!isValidUUID(req.user.id)) {
+      return res
+        .status(400)
+        .json({ error: `ID de usuário inválido: ${req.user.id}` });
+    }
+
     const { unreadOnly } = req.query; // Novo query parameter
 
     let query = `
@@ -34,6 +48,20 @@ router.get("/", authenticateToken, async (req, res) => {
 router.patch("/:id/read", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Validar se o id é um UUID válido
+    if (!isValidUUID(id)) {
+      return res
+        .status(400)
+        .json({ error: `ID de notificação inválido: ${id}` });
+    }
+
+    // Validar se req.user.id é um UUID válido
+    if (!isValidUUID(req.user.id)) {
+      return res
+        .status(400)
+        .json({ error: `ID de usuário inválido: ${req.user.id}` });
+    }
 
     // Verificar se a notificação existe e pertence ao usuário
     const [notifications] = await db.query(
