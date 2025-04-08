@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 import {
   Table,
   TableBody,
@@ -26,23 +27,32 @@ import Loading from "@/components/ui/loading";
 import { Calendar, MapPin, Users, FileText, DollarSign } from "lucide-react";
 
 interface Event {
-  id: number;
+  id: string;
   title: string;
   description?: string;
   date: string;
   location: string;
   target_audience: string;
   artists: {
-    artist_id: number;
+    artist_id: string;
     artist_name: string;
     amount: number;
     is_paid: boolean;
+    payment_proof_url?: string;
   }[];
 }
 
 interface Artist {
-  id: number;
+  id: string;
   name: string;
+}
+
+interface EventReport {
+  id: string;
+  file_url: string;
+  file_type: "photo" | "video" | "document";
+  description?: string;
+  created_at: string;
 }
 
 export default function EditEvent() {
@@ -59,6 +69,15 @@ export default function EditEvent() {
   const [artists, setArtists] = useState<Artist[]>([]);
   const [selectedArtistId, setSelectedArtistId] = useState("");
   const [artistAmount, setArtistAmount] = useState("");
+  const [reports, setReports] = useState<EventReport[]>([]);
+  const [reportFile, setReportFile] = useState<File | null>(null);
+  const [reportDescription, setReportDescription] = useState("");
+  const [reportFileType, setReportFileType] = useState<
+    "photo" | "video" | "document" | ""
+  >("");
+  const [paymentProofFiles, setPaymentProofFiles] = useState<{
+    [key: string]: File | null;
+  }>({});
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -92,6 +111,14 @@ export default function EditEvent() {
           }
         );
         setArtists(artistsResponse.data);
+
+        const reportsResponse = await axios.get(
+          `http://localhost:5000/api/events/${id}/reports`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        setReports(reportsResponse.data);
       } catch (error) {
         if (axios.isAxiosError(error)) {
           toast.error(
@@ -182,7 +209,7 @@ export default function EditEvent() {
     }
   };
 
-  const handleRemoveArtist = async (artistId: number) => {
+  const handleRemoveArtist = async (artistId: string) => {
     try {
       const token = localStorage.getItem("token");
       await axios.delete(
@@ -200,6 +227,11 @@ export default function EditEvent() {
         }
       );
       setEvent(eventResponse.data);
+      setPaymentProofFiles((prev) => {
+        const newFiles = { ...prev };
+        delete newFiles[artistId];
+        return newFiles;
+      });
     } catch (error) {
       if (axios.isAxiosError(error)) {
         toast.error(
@@ -214,18 +246,29 @@ export default function EditEvent() {
   };
 
   const handleUpdatePaymentStatus = async (
-    artistId: number,
+    artistId: string,
     isPaid: boolean
   ) => {
     try {
       const token = localStorage.getItem("token");
+      const formData = new FormData();
+
+      // Adiciona os dados no formato que o backend espera
+      formData.append("is_paid", JSON.stringify(!isPaid)); // Envia como booleano
+
+      // Adiciona o arquivo de comprovante se estiver marcando como pago
+      if (!isPaid && paymentProofFiles[artistId]) {
+        formData.append("payment_proof", paymentProofFiles[artistId]!);
+      }
+
       await axios.patch(
         `http://localhost:5000/api/events/${id}/artists/${artistId}`,
+        formData,
         {
-          is_paid: !isPaid,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            // Deixe o Axios definir automaticamente o Content-Type para FormData
+          },
         }
       );
       toast.success("Status de pagamento atualizado com sucesso!");
@@ -237,6 +280,15 @@ export default function EditEvent() {
         }
       );
       setEvent(eventResponse.data);
+
+      // Limpa o arquivo de comprovante se foi usado
+      if (!isPaid) {
+        setPaymentProofFiles((prev) => {
+          const newFiles = { ...prev };
+          delete newFiles[artistId];
+          return newFiles;
+        });
+      }
     } catch (error) {
       if (axios.isAxiosError(error)) {
         toast.error(
@@ -249,6 +301,104 @@ export default function EditEvent() {
       }
     }
   };
+
+  const handleUpdateArtistAmount = async (
+    artistId: string,
+    newAmount: string
+  ) => {
+    const parsedAmount = parseFloat(newAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      toast.error("Por favor, insira um valor válido.");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      await axios.patch(
+        `http://localhost:5000/api/events/${id}/artists/${artistId}`,
+        {
+          amount: parsedAmount,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      toast.success("Valor atualizado com sucesso!");
+
+      const eventResponse = await axios.get(
+        `http://localhost:5000/api/events/${id}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      setEvent(eventResponse.data);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          `Erro ao atualizar valor: ${
+            error.response?.data?.error || error.message
+          }`
+        );
+      } else {
+        toast.error(`Erro ao atualizar valor: ${String(error)}`);
+      }
+    }
+  };
+
+  const handleAddReport = async () => {
+    if (!reportFile || !reportFileType) {
+      toast.error("Selecione um arquivo e o tipo de relatório.");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      const formData = new FormData();
+      formData.append("file", reportFile);
+      formData.append("file_type", reportFileType);
+      if (reportDescription) {
+        formData.append("description", reportDescription);
+      }
+
+      await axios.post(
+        `http://localhost:5000/api/events/${id}/reports`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+      toast.success("Relatório adicionado com sucesso!");
+
+      const reportsResponse = await axios.get(
+        `http://localhost:5000/api/events/${id}/reports`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      setReports(reportsResponse.data);
+      setReportFile(null);
+      setReportFileType("");
+      setReportDescription("");
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          `Erro ao adicionar relatório: ${
+            error.response?.data?.error || error.message
+          }`
+        );
+      } else {
+        toast.error(`Erro ao adicionar relatório: ${String(error)}`);
+      }
+    }
+  };
+
+  const artistOptions = artists.map((artist) => ({
+    value: artist.id,
+    label: artist.name,
+  }));
 
   if (isAuthLoading || isLoading) return <Loading />;
   if (!user || !["admin", "secretary"].includes(user.role)) return null;
@@ -361,6 +511,7 @@ export default function EditEvent() {
                       <TableHead>Nome</TableHead>
                       <TableHead>Quantia (R$)</TableHead>
                       <TableHead>Status de Pagamento</TableHead>
+                      <TableHead>Comprovante</TableHead>
                       <TableHead>Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -368,7 +519,19 @@ export default function EditEvent() {
                     {event.artists.map((artist) => (
                       <TableRow key={artist.artist_id}>
                         <TableCell>{artist.artist_name}</TableCell>
-                        <TableCell>R$ {artist.amount.toFixed(2)}</TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            value={artist.amount.toString()}
+                            onChange={(e) =>
+                              handleUpdateArtistAmount(
+                                artist.artist_id,
+                                e.target.value
+                              )
+                            }
+                            className="w-32 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                          />
+                        </TableCell>
                         <TableCell>
                           <Button
                             variant={artist.is_paid ? "default" : "outline"}
@@ -388,6 +551,35 @@ export default function EditEvent() {
                               ? "Marcar como Pendente"
                               : "Marcar como Pago"}
                           </Button>
+                        </TableCell>
+                        <TableCell>
+                          {artist.is_paid ? (
+                            artist.payment_proof_url ? (
+                              <a
+                                href={artist.payment_proof_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-indigo-600 hover:underline"
+                              >
+                                Visualizar Comprovante
+                              </a>
+                            ) : (
+                              <Input
+                                type="file"
+                                accept="image/*,.pdf"
+                                onChange={(e) =>
+                                  setPaymentProofFiles({
+                                    ...paymentProofFiles,
+                                    [artist.artist_id]:
+                                      e.target.files?.[0] || null,
+                                  })
+                                }
+                                className="w-48"
+                              />
+                            )
+                          ) : (
+                            <p className="text-gray-600">Pendente</p>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Button
@@ -418,24 +610,12 @@ export default function EditEvent() {
                   <label className="block text-sm font-medium text-gray-700">
                     Artista
                   </label>
-                  <Select
-                    onValueChange={setSelectedArtistId}
+                  <Combobox
+                    options={artistOptions}
                     value={selectedArtistId}
-                  >
-                    <SelectTrigger className="mt-1 w-full">
-                      <SelectValue placeholder="Selecione um artista" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {artists.map((artist) => (
-                        <SelectItem
-                          key={artist.id}
-                          value={artist.id.toString()}
-                        >
-                          {artist.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={setSelectedArtistId}
+                    placeholder="Selecione um artista..."
+                  />
                 </div>
                 <div className="flex-1">
                   <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
@@ -455,6 +635,108 @@ export default function EditEvent() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Seção para adicionar relatórios */}
+          <div className="mt-8 bg-gray-50 p-6 rounded-lg shadow-sm">
+            <h2 className="text-xl font-semibold mb-4 text-gray-900">
+              Relatórios do Evento
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Tipo de Relatório
+                </label>
+                <Select
+                  onValueChange={(value: "photo" | "video" | "document") =>
+                    setReportFileType(value)
+                  }
+                  value={reportFileType}
+                >
+                  <SelectTrigger className="mt-1 w-full">
+                    <SelectValue placeholder="Selecione o tipo de relatório" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="photo">Foto</SelectItem>
+                    <SelectItem value="video">Vídeo</SelectItem>
+                    <SelectItem value="document">Documento</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Arquivo
+                </label>
+                <Input
+                  type="file"
+                  accept={
+                    reportFileType === "photo"
+                      ? "image/*"
+                      : reportFileType === "video"
+                      ? "video/*"
+                      : ".pdf,.doc,.docx"
+                  }
+                  onChange={(e) => setReportFile(e.target.files?.[0] || null)}
+                  className="mt-1 w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Descrição (opcional)
+                </label>
+                <Input
+                  type="text"
+                  value={reportDescription}
+                  onChange={(e) => setReportDescription(e.target.value)}
+                  placeholder="Descreva o relatório..."
+                  className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                />
+              </div>
+              <Button onClick={handleAddReport}>Adicionar Relatório</Button>
+            </div>
+
+            {reports.length > 0 ? (
+              <div className="mt-6">
+                <h3 className="text-lg font-semibold mb-2 text-gray-900">
+                  Relatórios Adicionados
+                </h3>
+                <ul className="space-y-2">
+                  {reports.map((report) => (
+                    <li key={report.id} className="p-2 bg-gray-100 rounded-md">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="text-gray-900">
+                            Tipo:{" "}
+                            {report.file_type.charAt(0).toUpperCase() +
+                              report.file_type.slice(1)}
+                          </p>
+                          {report.description && (
+                            <p className="text-gray-600">
+                              Descrição: {report.description}
+                            </p>
+                          )}
+                          <a
+                            href={report.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-indigo-600 hover:underline"
+                          >
+                            Visualizar
+                          </a>
+                        </div>
+                        <p className="text-gray-600">
+                          {new Date(report.created_at).toLocaleDateString(
+                            "pt-BR"
+                          )}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="mt-4 text-gray-600">Nenhum relatório adicionado.</p>
+            )}
           </div>
         </div>
       </div>
