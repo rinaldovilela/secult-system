@@ -26,7 +26,7 @@ export default function Notifications() {
     setIsLoading(false);
   }, [user, isAuthLoading, router]);
 
-  const handleMarkAsRead = async (notificationId: number) => {
+  const handleMarkAsRead = async (notificationId: string) => {
     try {
       const token = getToken();
       if (!token) {

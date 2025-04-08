@@ -2,7 +2,7 @@ import { jwtDecode } from "jwt-decode";
 
 interface DecodedToken {
   exp: number;
-  id: number;
+  id: string;
   email: string;
   role: string;
 }
@@ -10,7 +10,7 @@ interface DecodedToken {
 export interface User {
   bio: string;
   area_of_expertise: string;
-  id: number;
+  id: string;
   name: string;
   role: string;
 }
@@ -51,7 +51,7 @@ export const getUser = (): User | null => {
     // Valida se o parsedUser tem os campos esperados
     if (
       !parsedUser ||
-      typeof parsedUser.id !== "number" ||
+      typeof parsedUser.id !== "string" ||
       typeof parsedUser.name !== "string" ||
       typeof parsedUser.role !== "string"
     ) {

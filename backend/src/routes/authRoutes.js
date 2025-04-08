@@ -9,6 +9,8 @@ const { cpf, cnpj } = cpfCnpjValidator;
 const router = express.Router();
 
 // Registro de usuário (admin ou secretary)
+const { v1: uuidv1 } = require("uuid");
+
 router.post("/register", authenticateToken, async (req, res) => {
   const { name, email, password, role, cpf_cnpj } = req.body;
 
@@ -20,14 +22,12 @@ router.post("/register", authenticateToken, async (req, res) => {
     return res.status(400).json({ error: "Role inválido" });
   }
 
-  // Apenas administradores podem registrar outros administradores
   if (role === "admin" && req.user.role !== "admin") {
     return res.status(403).json({
       error: "Apenas administradores podem registrar outros administradores",
     });
   }
 
-  // Validar CPF/CNPJ (opcional para admin/secretary, mas deve ser válido se fornecido)
   if (cpf_cnpj && !cpf.isValid(cpf_cnpj) && !cnpj.isValid(cpf_cnpj)) {
     return res.status(400).json({ error: "CPF ou CNPJ inválido" });
   }
@@ -42,19 +42,19 @@ router.post("/register", authenticateToken, async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const [result] = await db.query(
-      "INSERT INTO users (name, email, password, role, cpf_cnpj, created_at) VALUES (?, ?, ?, ?, ?, NOW())",
-      [name, email, hashedPassword, role, cpf_cnpj || null]
+    const userId = uuidv1(); // Gera um UUID para o novo usuário
+    await db.query(
+      "INSERT INTO users (id, name, email, password, role, cpf_cnpj, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())",
+      [userId, name, email, hashedPassword, role, cpf_cnpj || null]
     );
 
-    res.status(201).json({ id: result.insertId, name, email, role });
+    res.status(201).json({ id: userId, name, email, role });
   } catch (error) {
     console.error("Erro ao registrar usuário:", error);
     res.status(500).json({ error: "Erro ao registrar usuário" });
   }
 });
 
-// Login de usuário
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
@@ -85,7 +85,7 @@ router.post("/login", async (req, res) => {
     res.status(200).json({
       token,
       user: {
-        id: user.id,
+        id: user.id, // Agora é uma string (UUID)
         name: user.name,
         email: user.email,
         role: user.role,

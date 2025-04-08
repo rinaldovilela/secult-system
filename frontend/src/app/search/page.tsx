@@ -22,7 +22,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 
 // Tipos melhorados
 interface BaseResult {
-  id: number;
+  id: string;
   name: string;
 }
 

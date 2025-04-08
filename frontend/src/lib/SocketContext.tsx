@@ -13,8 +13,8 @@ import { useAuth } from "@/lib/useAuth";
 import { getToken } from "@/lib/auth";
 
 interface Notification {
-  id: number;
-  user_id: number;
+  id: string; // Changed from number to string for UUID
+  user_id: string; // Changed from number to string for UUID
   type: string;
   message: string;
   is_read: boolean;
@@ -26,7 +26,7 @@ interface SocketContextType {
   notifications: Notification[];
   unreadCount: number;
   addNotification: (notification: Notification) => void;
-  markNotificationAsRead: (notificationId: number) => void;
+  markNotificationAsRead: (notificationId: string) => void; // Changed from number to string
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -62,7 +62,8 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
 
     newSocket.on("new_notification", (notification: Notification) => {
       console.log("[SocketContext] Nova notificação recebida:", notification);
-      if (notification.user_id === parseInt(String(user.id))) {
+      if (notification.user_id === user.id) {
+        // Removed parseInt since ID is now string
         setNotifications((prev) => [notification, ...prev]);
         if (!notification.is_read) {
           setUnreadCount((prev) => prev + 1);
@@ -126,7 +127,8 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const markNotificationAsRead = (notificationId: number) => {
+  const markNotificationAsRead = (notificationId: string) => {
+    // Changed parameter type to string
     setNotifications((prev) =>
       prev.map((notif) =>
         notif.id === notificationId ? { ...notif, is_read: true } : notif
