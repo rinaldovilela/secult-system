@@ -89,10 +89,17 @@ export default function EditProfile() {
     }
   };
 
-  if (isAuthLoading) return <Loading />;
-  if (!user) {
-    router.push("/login");
-    return null;
+  useEffect(() => {
+    if (!isAuthLoading && !isLoading) {
+      if (!user || !["admin", "secretary"].includes(user.role)) {
+        router.push("/login");
+      }
+    }
+  }, [isAuthLoading, isLoading, user, router]);
+
+  if (isAuthLoading || isLoading) return <Loading />;
+  if (!user || !["admin", "secretary"].includes(user.role)) {
+    return null; // Agora apenas retornamos null, a navegação é tratada no useEffect
   }
 
   return (
