@@ -3,165 +3,396 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import axios from "axios";
-import toast from "react-hot-toast";
+import { toast } from "@/components/ui/use-toast";
+import Image from "next/image";
+import {
+  User,
+  Mail,
+  MapPin,
+  CreditCard,
+  FileText,
+  Video,
+  Calendar,
+  Lock,
+  Image as ImageIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { MaskedInput } from "@/components/MaskedInput";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import Loading from "@/components/ui/loading";
-import Image from "next/image";
+import { getToken } from "@/lib/auth";
+import { z } from "zod";
 
-export default function EditUser() {
+// Schema de validação para edição (sem campo de senha)
+const editUserSchema = z.object({
+  name: z.string().min(2, "O nome deve ter pelo menos 2 caracteres"),
+  email: z.string().email("Email inválido"),
+  role: z.enum(["artist", "group"], {
+    message: "Selecione o tipo (Artista ou Grupo Cultural)",
+  }),
+  cpfCnpj: z.string().refine((value) => {
+    const cleanValue = value.replace(/\D/g, "");
+    return cleanValue.length === 11 || cleanValue.length === 14;
+  }, "CPF ou CNPJ inválido"),
+  bio: z.string().optional(),
+  areaOfExpertise: z.string().optional(),
+  birthDate: z.string().optional(),
+  address: z.object({
+    cep: z.string().refine((value) => {
+      const cleanValue = value.replace(/\D/g, "");
+      return cleanValue.length === 8;
+    }, "CEP deve ter 8 dígitos"),
+    logradouro: z.string().min(1, "Logradouro é obrigatório"),
+    numero: z.string().min(1, "Número é obrigatório"),
+    complemento: z.string().optional(),
+    bairro: z.string().min(1, "Bairro é obrigatório"),
+    cidade: z.string().min(1, "Cidade é obrigatória"),
+    estado: z.string().length(2, "Estado deve ter 2 caracteres"),
+  }),
+  bankDetails: z.object({
+    bank_name: z.string().min(1, "Nome do banco é obrigatório"),
+    account_type: z.enum(["corrente", "poupanca"]),
+    agency: z.string().min(1, "Agência é obrigatória"),
+    account_number: z.string().min(1, "Número da conta é obrigatório"),
+    pix_key: z.string().optional(),
+  }),
+  profilePicture: z.instanceof(File).optional(),
+  portfolio: z.instanceof(File).optional(),
+  video: z.instanceof(File).optional(),
+  relatedFiles: z.instanceof(File).optional(),
+});
+
+type EditUserFormData = z.infer<typeof editUserSchema>;
+
+const BRAZILIAN_STATES = [
+  "AC",
+  "AL",
+  "AP",
+  "AM",
+  "BA",
+  "CE",
+  "DF",
+  "ES",
+  "GO",
+  "MA",
+  "MT",
+  "MS",
+  "MG",
+  "PA",
+  "PB",
+  "PR",
+  "PE",
+  "PI",
+  "RJ",
+  "RN",
+  "RS",
+  "RO",
+  "RR",
+  "SC",
+  "SP",
+  "SE",
+  "TO",
+];
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
+export default function EditUserPage() {
   const router = useRouter();
   const { id } = useParams();
   const { user, isAuthLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    bio: "",
-    areaOfExpertise: "",
-    role: "",
-    profilePicture: null as string | null,
-    profilePictureFile: null as File | null,
-    portfolio: null as string | null,
-    portfolioFile: null as File | null,
-    video: null as string | null,
-    videoFile: null as File | null,
-    relatedFiles: null as string | null,
-    relatedFilesFile: null as File | null,
+  const [profilePreview, setProfilePreview] = useState<string | null>(null);
+  const [isLoadingCep, setIsLoadingCep] = useState(false);
+  const [cepStatus, setCepStatus] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
+
+  const form = useForm<EditUserFormData>({
+    resolver: zodResolver(editUserSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      role: "artist",
+      cpfCnpj: "",
+      bio: "",
+      areaOfExpertise: "",
+      birthDate: "",
+      address: {
+        cep: "",
+        logradouro: "",
+        numero: "",
+        complemento: "",
+        bairro: "",
+        cidade: "",
+        estado: "SP",
+      },
+      bankDetails: {
+        bank_name: "",
+        account_type: "corrente",
+        agency: "",
+        account_number: "",
+        pix_key: "",
+      },
+    },
   });
 
+  // Carregar dados do usuário
   useEffect(() => {
     if (isAuthLoading) return;
 
-    if (
-      !user ||
-      (!["admin", "secretary"].includes(user.role) &&
-        user.id !== parseInt(id as string))
-    ) {
+    if (!user || !["admin", "secretary"].includes(user.role)) {
       router.push("/login");
       return;
     }
 
-    const fetchUser = async () => {
+    const fetchUserData = async () => {
       try {
-        const token = localStorage.getItem("token");
+        const token = getToken();
         const response = await axios.get(
-          `http://localhost:5000/api/users/${id}?timestamp=${Date.now()}`,
+          `http://localhost:5000/api/users/${id}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
         );
+
         const userData = response.data;
-        setFormData({
-          name: userData.name || "",
-          email: userData.email || "",
+
+        // Preencher o formulário com os dados do usuário
+        form.reset({
+          name: userData.name,
+          email: userData.email,
+          role: userData.role,
+          cpfCnpj: userData.cpf_cnpj || "",
           bio: userData.bio || "",
           areaOfExpertise: userData.area_of_expertise || "",
-          role: userData.role || "",
-          profilePicture: userData.profile_picture
-            ? `data:image/jpeg;base64,${userData.profile_picture}`
-            : null,
-          profilePictureFile: null,
-          portfolio: userData.portfolio
-            ? `data:application/pdf;base64,${userData.portfolio}`
-            : null,
-          portfolioFile: null,
-          video: userData.video
-            ? `data:video/mp4;base64,${userData.video}`
-            : null,
-          videoFile: null,
-          relatedFiles: userData.related_files
-            ? `data:application/octet-stream;base64,${userData.related_files}`
-            : null,
-          relatedFilesFile: null,
+          birthDate: userData.birth_date
+            ? formatDateForInput(userData.birth_date)
+            : "",
+          address: {
+            cep: userData.address?.cep || "",
+            logradouro: userData.address?.logradouro || "",
+            numero: userData.address?.numero || "",
+            complemento: userData.address?.complemento || "",
+            bairro: userData.address?.bairro || "",
+            cidade: userData.address?.cidade || "",
+            estado: userData.address?.estado || "SP",
+          },
+          bankDetails: {
+            bank_name: userData.bank_details?.bank_name || "",
+            account_type:
+              (userData.bank_details?.account_type as
+                | "corrente"
+                | "poupanca") || "corrente",
+            agency: userData.bank_details?.agency || "",
+            account_number: userData.bank_details?.account_number || "",
+            pix_key: userData.bank_details?.pix_key || "",
+          },
         });
-      } catch (error) {
-        if (axios.isAxiosError(error)) {
-          toast.error(
-            `Erro ao buscar usuário: ${
-              error.response?.data?.error || error.message
-            }`
+
+        // Configurar pré-visualização da imagem de perfil se existir
+        if (userData.profile_picture) {
+          setProfilePreview(
+            `data:image/jpeg;base64,${userData.profile_picture}`
           );
-        } else {
-          toast.error(`Erro ao buscar usuário: ${String(error)}`);
         }
+      } catch (error) {
+        toast({
+          title: "Erro ao carregar usuário",
+          description: axios.isAxiosError(error)
+            ? error.response?.data?.error || error.message
+            : "Ocorreu um erro inesperado",
+          variant: "destructive",
+        });
+        router.push(`/users/${id}`);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchUser();
-  }, [id, user, isAuthLoading, router]);
+    fetchUserData();
+  }, [id, user, isAuthLoading, router, form]);
 
-  // Clean up object URLs
-  useEffect(() => {
-    return () => {
-      if (formData.profilePicture?.startsWith("blob:")) {
-        URL.revokeObjectURL(formData.profilePicture);
-      }
-      if (formData.portfolio?.startsWith("blob:")) {
-        URL.revokeObjectURL(formData.portfolio);
-      }
-      if (formData.video?.startsWith("blob:")) {
-        URL.revokeObjectURL(formData.video);
-      }
-      if (formData.relatedFiles?.startsWith("blob:")) {
-        URL.revokeObjectURL(formData.relatedFiles);
-      }
-    };
-  }, [formData]);
+  // Função para formatar a data para o input
+  function formatDateForInput(dateString: string) {
+    const date = new Date(dateString);
+    return date
+      .toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+      .split("/")
+      .join("/");
+  }
 
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
+  const role = form.watch("role");
 
-  const handleFileChange = (
-    e: React.ChangeEvent<HTMLInputElement>,
-    field: keyof typeof formData
-  ) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const objectUrl = URL.createObjectURL(file);
-      setFormData((prev) => ({ ...prev, [field]: objectUrl }));
+  const fetchAddressByCep = async (cep: string) => {
+    const cleanCep = cep.replace(/\D/g, "");
+    if (cleanCep.length !== 8) return;
 
-      // Armazena o arquivo original para envio
-      const fileField = `${field}File` as keyof typeof formData;
-      setFormData((prev) => ({ ...prev, [fileField]: file }));
+    setIsLoadingCep(true);
+    setCepStatus("loading");
+    try {
+      const response = await axios.get(
+        `https://viacep.com.br/ws/${cleanCep}/json/`
+      );
+      const data = response.data;
+      if (data.erro) {
+        setCepStatus("error");
+        toast({
+          title: "CEP não encontrado",
+          description:
+            "Por favor, verifique o CEP ou preencha os campos manualmente.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      form.setValue("address.cep", cep, { shouldValidate: true });
+      form.setValue("address.logradouro", data.logradouro || "", {
+        shouldValidate: true,
+      });
+      form.setValue("address.bairro", data.bairro || "", {
+        shouldValidate: true,
+      });
+      form.setValue("address.cidade", data.localidade || "", {
+        shouldValidate: true,
+      });
+      form.setValue("address.estado", data.uf || "SP", {
+        shouldValidate: true,
+      });
+
+      setCepStatus("success");
+      toast({
+        title: "✅ Endereço preenchido com sucesso!",
+        description: "Verifique os dados e ajuste se necessário.",
+      });
+    } catch (error) {
+      setCepStatus("error");
+      toast({
+        title: "Erro ao buscar CEP",
+        description:
+          "Tente novamente mais tarde ou preencha os campos manualmente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingCep(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleFileChange = (
+    field: keyof EditUserFormData,
+    e: React.ChangeEvent<HTMLInputElement>,
+    setPreview?: (value: string | null) => void
+  ) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > MAX_FILE_SIZE) {
+        form.setError(field, {
+          type: "manual",
+          message: `O arquivo é muito grande. O limite é ${
+            MAX_FILE_SIZE / (1024 * 1024)
+          }MB.`,
+        });
+        return;
+      }
+
+      form.setValue(field, file);
+      if (setPreview) {
+        const reader = new FileReader();
+        reader.onloadend = () => setPreview(reader.result as string);
+        reader.readAsDataURL(file);
+      }
+    } else {
+      form.setValue(field, undefined);
+      if (setPreview) setPreview(null);
+    }
+  };
+
+  const onSubmit = async (values: EditUserFormData) => {
     setIsSubmitting(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
+      if (!token) {
+        toast({
+          title: "❌ Token não encontrado",
+          description: "Faça login novamente.",
+          variant: "destructive",
+        });
+        router.push("/login");
+        return;
+      }
+
       const formDataToSend = new FormData();
 
-      // Add text fields
-      formDataToSend.append("name", formData.name);
-      formDataToSend.append("email", formData.email);
-      formDataToSend.append("bio", formData.bio);
-      formDataToSend.append("area_of_expertise", formData.areaOfExpertise);
-      formDataToSend.append("role", formData.role);
+      // Dados básicos
+      formDataToSend.append("name", values.name);
+      formDataToSend.append("email", values.email);
+      formDataToSend.append("role", values.role);
+      formDataToSend.append("cpf_cnpj", values.cpfCnpj.replace(/\D/g, ""));
 
-      // Add files if they exist - usando os arquivos originais
-      if (formData.profilePictureFile) {
-        formDataToSend.append("profile_picture", formData.profilePictureFile);
+      // Campos opcionais
+      if (values.bio) formDataToSend.append("bio", values.bio);
+      if (values.areaOfExpertise)
+        formDataToSend.append("area_of_expertise", values.areaOfExpertise);
+      if (values.birthDate) {
+        formDataToSend.append(
+          "birth_date",
+          values.birthDate.split("/").reverse().join("-")
+        );
       }
-      if (formData.portfolioFile) {
-        formDataToSend.append("portfolio", formData.portfolioFile);
-      }
-      if (formData.videoFile) {
-        formDataToSend.append("video", formData.videoFile);
-      }
-      if (formData.relatedFilesFile) {
-        formDataToSend.append("related_files", formData.relatedFilesFile);
-      }
+
+      // Endereço
+      const address = {
+        cep: values.address.cep.replace(/\D/g, ""),
+        logradouro: values.address.logradouro,
+        numero: values.address.numero,
+        complemento: values.address.complemento || "",
+        bairro: values.address.bairro,
+        cidade: values.address.cidade,
+        estado: values.address.estado,
+      };
+      formDataToSend.append("address", JSON.stringify(address));
+
+      // Dados bancários
+      const bankDetails = {
+        bank_name: values.bankDetails.bank_name,
+        account_type: values.bankDetails.account_type,
+        agency: values.bankDetails.agency,
+        account_number: values.bankDetails.account_number,
+        pix_key: values.bankDetails.pix_key || "",
+      };
+      formDataToSend.append("bank_details", JSON.stringify(bankDetails));
+
+      // Arquivos
+      if (values.profilePicture)
+        formDataToSend.append("profile_picture", values.profilePicture);
+      if (values.portfolio)
+        formDataToSend.append("portfolio", values.portfolio);
+      if (values.video) formDataToSend.append("video", values.video);
+      if (values.relatedFiles)
+        formDataToSend.append("related_files", values.relatedFiles);
 
       await axios.put(`http://localhost:5000/api/users/${id}`, formDataToSend, {
         headers: {
@@ -170,230 +401,626 @@ export default function EditUser() {
         },
       });
 
-      toast.success("Perfil atualizado com sucesso!");
-      // Force refresh and redirect
-      router.refresh();
+      toast({
+        title: "✅ Usuário atualizado com sucesso!",
+        description: "As alterações foram salvas.",
+      });
       router.push(`/users/${id}`);
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        toast.error(
-          `Erro ao atualizar perfil: ${
-            error.response?.data?.error || error.message
-          }`
-        );
-      } else {
-        toast.error(`Erro ao atualizar perfil: ${String(error)}`);
-      }
+      toast({
+        title: "❌ Erro ao atualizar usuário",
+        description: axios.isAxiosError(error)
+          ? error.response?.data?.error || error.message
+          : error instanceof Error
+          ? error.message
+          : "Ocorreu um erro inesperado",
+        variant: "destructive",
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   if (isAuthLoading || isLoading) return <Loading />;
-  if (
-    !user ||
-    (!["admin", "secretary"].includes(user.role) &&
-      user.id !== parseInt(id as string))
-  )
+  if (!user || !["admin", "secretary"].includes(user.role)) {
+    router.push("/login");
     return null;
-
-  const isAdminOrSecretary = ["admin", "secretary"].includes(user.role);
+  }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-2xl w-full bg-white shadow-lg rounded-lg p-6 sm:p-8">
-        <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900">
-          Editar Perfil
-        </h1>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Name */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Nome <span className="text-red-500">*</span>
-            </label>
-            <Input
-              type="text"
-              name="name"
-              value={formData.name}
-              onChange={handleInputChange}
-              required
-              className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-            />
+    <div className="min-h-screen bg-gray-100 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto">
+        <div className="bg-white shadow-lg rounded-lg p-6 sm:p-8">
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+              Editar {role === "artist" ? "Artista" : "Grupo Cultural"}
+            </h1>
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/users/${id}`)}
+            >
+              Voltar
+            </Button>
           </div>
 
-          {/* Email */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Email <span className="text-red-500">*</span>
-            </label>
-            <Input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleInputChange}
-              required
-              className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-            />
-          </div>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+              {/* Dados Pessoais */}
+              <div className="space-y-4">
+                <h2 className="text-xl font-semibold">Dados Pessoais</h2>
 
-          {/* Bio */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Biografia
-            </label>
-            <Input
-              type="text"
-              name="bio"
-              value={formData.bio}
-              onChange={handleInputChange}
-              className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-            />
-          </div>
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <User className="w-5 h-5 text-indigo-600" />
+                        Nome Completo *
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Nome completo"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-          {/* Area of Expertise */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Área de Atuação
-            </label>
-            <Input
-              type="text"
-              name="areaOfExpertise"
-              value={formData.areaOfExpertise}
-              onChange={handleInputChange}
-              className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-            />
-          </div>
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <Mail className="w-5 h-5 text-indigo-600" />
+                        Email *
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="email"
+                          placeholder="seu@email.com"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-          {/* Role (admin/secretary only) */}
-          {isAdminOrSecretary && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Papel <span className="text-red-500">*</span>
-              </label>
-              <select
-                name="role"
-                value={formData.role}
-                onChange={handleInputChange}
-                required
-                className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2"
-              >
-                <option value="" disabled>
-                  Selecione um papel
-                </option>
-                <option value="artist">Artista</option>
-                <option value="group">Grupo</option>
-              </select>
-            </div>
-          )}
+                <FormField
+                  control={form.control}
+                  name="role"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <User className="w-5 h-5 text-indigo-600" />
+                        Tipo de Cadastro *
+                      </FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={isSubmitting}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione o tipo" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="artist">
+                            Artista Individual
+                          </SelectItem>
+                          <SelectItem value="group">Grupo Cultural</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-          {/* Profile Picture */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Foto de Perfil
-            </label>
-            <Input
-              type="file"
-              accept="image/*"
-              onChange={(e) => handleFileChange(e, "profilePicture")}
-              className="mt-1 w-full"
-            />
-            {formData.profilePicture && (
-              <div className="mt-2">
-                <Image
-                  src={formData.profilePicture}
-                  alt="Preview"
-                  width={128}
-                  height={128}
-                  className="h-32 w-32 object-cover rounded-full"
-                  key={formData.profilePicture}
+                <FormField
+                  control={form.control}
+                  name="cpfCnpj"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        {role === "artist" ? "CPF *" : "CNPJ *"}
+                      </FormLabel>
+                      <FormControl>
+                        <MaskedInput
+                          mask={
+                            role === "artist"
+                              ? "000.000.000-00"
+                              : "00.000.000/0000-00"
+                          }
+                          placeholder={
+                            role === "artist"
+                              ? "000.000.000-00"
+                              : "00.000.000/0000-00"
+                          }
+                          {...field}
+                          onAccept={(value) => field.onChange(value)}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="birthDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <Calendar className="w-5 h-5 text-indigo-600" />
+                        Data de Nascimento
+                      </FormLabel>
+                      <FormControl>
+                        <MaskedInput
+                          mask="00/00/0000"
+                          placeholder="DD/MM/YYYY"
+                          {...field}
+                          onAccept={(value) => field.onChange(value)}
+                          disabled={isSubmitting}
+                          className="pl-10"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="bio"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Biografia</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          rows={3}
+                          placeholder="Conte sobre o artista/grupo..."
+                          {...field}
+                          value={field.value || ""}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="areaOfExpertise"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Área de Atuação</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Ex: Música, Teatro, Dança"
+                          {...field}
+                          value={field.value || ""}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
-            )}
-          </div>
 
-          {/* Portfolio */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Portfólio (PDF)
-            </label>
-            <Input
-              type="file"
-              accept=".pdf"
-              onChange={(e) => handleFileChange(e, "portfolio")}
-              className="mt-1 w-full"
-            />
-            {formData.portfolio && (
-              <a
-                href={formData.portfolio}
-                download="portfolio.pdf"
-                className="mt-2 inline-block text-indigo-600 hover:text-indigo-800"
-              >
-                Baixar Portfólio Atual
-              </a>
-            )}
-          </div>
+              {/* Endereço */}
+              <div className="bg-gray-50 p-6 rounded-lg space-y-4">
+                <h2 className="text-xl font-semibold">Endereço</h2>
 
-          {/* Video */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Vídeo
-            </label>
-            <Input
-              type="file"
-              accept="video/*"
-              onChange={(e) => handleFileChange(e, "video")}
-              className="mt-1 w-full"
-            />
-            {formData.video && (
-              <video
-                src={formData.video}
-                controls
-                className="mt-2 w-full max-w-md rounded-md"
-                key={formData.video}
-              />
-            )}
-          </div>
+                <FormField
+                  control={form.control}
+                  name="address.cep"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <MapPin className="w-5 h-5 text-indigo-600" />
+                        CEP *
+                      </FormLabel>
+                      <FormControl>
+                        <MaskedInput
+                          mask="00000-000"
+                          placeholder="00000-000"
+                          value={field.value}
+                          onChange={(e) => field.onChange(e.target.value)}
+                          onAccept={(value) => {
+                            field.onChange(value);
+                            const cleanValue = value.replace(/\D/g, "");
+                            if (cleanValue.length === 8) {
+                              fetchAddressByCep(value);
+                            }
+                          }}
+                          onBlur={() => form.trigger("address.cep")}
+                          disabled={isLoadingCep || isSubmitting}
+                          className="pl-10"
+                        />
+                      </FormControl>
+                      <div className="text-sm mt-1">
+                        {cepStatus === "loading" && (
+                          <p className="text-gray-500">Buscando endereço...</p>
+                        )}
+                        {cepStatus === "success" && (
+                          <p className="text-green-600">
+                            Endereço preenchido com sucesso!
+                          </p>
+                        )}
+                        {cepStatus === "error" && (
+                          <p className="text-red-600">
+                            Não foi possível buscar o endereço.
+                          </p>
+                        )}
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-          {/* Related Files */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Arquivos Relacionados
-            </label>
-            <Input
-              type="file"
-              onChange={(e) => handleFileChange(e, "relatedFiles")}
-              className="mt-1 w-full"
-            />
-            {formData.relatedFiles && (
-              <a
-                href={formData.relatedFiles}
-                download="related_files"
-                className="mt-2 inline-block text-indigo-600 hover:text-indigo-800"
-              >
-                Baixar Arquivos Relacionados Atuais
-              </a>
-            )}
-          </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="address.logradouro"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Logradouro *</FormLabel>
+                        <FormControl>
+                          <Input {...field} disabled={isSubmitting} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-          {/* Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white"
-            >
-              {isSubmitting ? "Salvando..." : "Salvar"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => router.push("/search")}
-              className="w-full sm:w-auto border-gray-300 text-gray-700 hover:bg-gray-100"
-            >
-              Cancelar
-            </Button>
-          </div>
-        </form>
+                  <FormField
+                    control={form.control}
+                    name="address.numero"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Número *</FormLabel>
+                        <FormControl>
+                          <Input {...field} disabled={isSubmitting} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="address.complemento"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Complemento</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          value={field.value || ""}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="address.bairro"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Bairro *</FormLabel>
+                        <FormControl>
+                          <Input {...field} disabled={isSubmitting} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="address.cidade"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Cidade *</FormLabel>
+                        <FormControl>
+                          <Input {...field} disabled={isSubmitting} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="address.estado"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Estado (UF) *</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={isSubmitting}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione o estado" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {BRAZILIAN_STATES.map((uf) => (
+                            <SelectItem key={uf} value={uf}>
+                              {uf}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Dados Bancários */}
+              <div className="bg-gray-50 p-6 rounded-lg space-y-4">
+                <h2 className="text-xl font-semibold">Dados Bancários</h2>
+
+                <FormField
+                  control={form.control}
+                  name="bankDetails.bank_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <CreditCard className="w-5 h-5 text-indigo-600" />
+                        Nome do Banco *
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          disabled={isSubmitting}
+                          className="pl-10"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="bankDetails.account_type"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tipo de Conta *</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                          disabled={isSubmitting}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="corrente">
+                              Conta Corrente
+                            </SelectItem>
+                            <SelectItem value="poupanca">
+                              Conta Poupança
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="bankDetails.agency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Agência *</FormLabel>
+                        <FormControl>
+                          <Input {...field} disabled={isSubmitting} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="bankDetails.account_number"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Número da Conta *</FormLabel>
+                        <FormControl>
+                          <Input {...field} disabled={isSubmitting} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="bankDetails.pix_key"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Chave PIX</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            value={field.value || ""}
+                            disabled={isSubmitting}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+
+              {/* Arquivos */}
+              <div className="bg-gray-50 p-6 rounded-lg space-y-4">
+                <h2 className="text-xl font-semibold">Mídias e Arquivos</h2>
+
+                <FormField
+                  control={form.control}
+                  name="profilePicture"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <ImageIcon className="w-5 h-5 text-indigo-600" />
+                        Foto de Perfil
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="file"
+                          accept="image/jpeg,image/png,image/jpg,image/gif"
+                          onChange={(e) =>
+                            handleFileChange(
+                              "profilePicture",
+                              e,
+                              setProfilePreview
+                            )
+                          }
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      {profilePreview && (
+                        <div className="mt-2 h-32 w-32 relative">
+                          <Image
+                            src={profilePreview}
+                            alt="Prévia da foto de perfil"
+                            fill
+                            className="object-cover rounded"
+                          />
+                        </div>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="portfolio"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-indigo-600" />
+                        Portfólio (PDF)
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="file"
+                          accept="application/pdf"
+                          onChange={(e) => handleFileChange("portfolio", e)}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      {field.value && (
+                        <p className="text-sm text-gray-500 mt-1">
+                          Arquivo selecionado: {field.value.name}
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="video"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <Video className="w-5 h-5 text-indigo-600" />
+                        Vídeo
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="file"
+                          accept="video/mp4,video/webm,video/ogg"
+                          onChange={(e) => handleFileChange("video", e)}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      {field.value && (
+                        <p className="text-sm text-gray-500 mt-1">
+                          Arquivo selecionado: {field.value.name}
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="relatedFiles"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-indigo-600" />
+                        Arquivos Relacionados
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="file"
+                          onChange={(e) => handleFileChange("relatedFiles", e)}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      {field.value && (
+                        <p className="text-sm text-gray-500 mt-1">
+                          Arquivo selecionado: {field.value.name}
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="flex justify-end gap-4 pt-6">
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Salvando..." : "Salvar Alterações"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => router.push(`/users/${id}`)}
+                  disabled={isSubmitting}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </div>
       </div>
     </div>
   );

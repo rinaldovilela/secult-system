@@ -17,6 +17,7 @@ import {
   Clock,
   Banknote,
   FileDigit,
+  Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Loading from "@/components/ui/loading";
@@ -219,9 +220,18 @@ export default function UserDetails() {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             Detalhes do Usuário
           </h1>
-          <Button variant="outline" onClick={() => router.push("/search")}>
-            Voltar
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => router.push(`/users/${id}/edit`)}
+              className="bg-indigo-600 hover:bg-indigo-700 gap-2"
+            >
+              <Pencil className="w-4 h-4" />
+              <span>Editar</span>
+            </Button>
+            <Button variant="outline" onClick={() => router.push("/search")}>
+              Voltar
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
