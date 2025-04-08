@@ -20,7 +20,6 @@ import { Calendar, Mail, User } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { useDebounce } from "@/hooks/useDebounce";
 
-// Tipos melhorados
 interface BaseResult {
   id: string;
   name: string;
@@ -47,11 +46,28 @@ export default function Search() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-
-  // Usar debounce para evitar múltiplas requisições
   const debouncedQuery = useDebounce(query, 500);
 
   const isAdminOrSecretary = ["admin", "secretary"].includes(user?.role || "");
+
+  useEffect(() => {
+    if (!isAuthLoading && !user) {
+      toast({
+        title: "Acesso não autorizado",
+        description: "Você precisa estar logado para acessar esta página.",
+        variant: "destructive",
+      });
+      router.push("/login");
+    } else if (user && !["admin", "secretary"].includes(user.role)) {
+      toast({
+        title: "Permissão insuficiente",
+        description:
+          "Apenas administradores e secretários podem acessar esta página.",
+        variant: "destructive",
+      });
+      router.push("/dashboard");
+    }
+  }, [isAuthLoading, user, router]);
 
   const handleSearch = useCallback(async () => {
     if (!debouncedQuery.trim()) {
@@ -60,6 +76,8 @@ export default function Search() {
     }
 
     setIsLoading(true);
+    const controller = new AbortController();
+
     try {
       const token = getToken();
       if (!token) {
@@ -68,7 +86,7 @@ export default function Search() {
           description: "Faça login novamente.",
           variant: "destructive",
         });
-        router.push("/login");
+        setTimeout(() => router.push("/login"), 0);
         return;
       }
 
@@ -77,29 +95,30 @@ export default function Search() {
         {
           params: { type: searchType, query: debouncedQuery },
           headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
         }
       );
       setResults(response.data);
     } catch (error) {
-      setResults([]);
-      toast({
-        title: "Erro na busca",
-        description: axios.isAxiosError(error)
-          ? error.response?.data?.error || error.message
-          : "Ocorreu um erro inesperado",
-        variant: "destructive",
-      });
+      if (axios.isAxiosError(error) && error.name !== "CanceledError") {
+        setResults([]);
+        toast({
+          title: "Erro na busca",
+          description: error.response?.data?.error || error.message,
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsLoading(false);
     }
+
+    return () => controller.abort();
   }, [debouncedQuery, searchType, router]);
 
-  // Busca automática quando query ou tipo mudam
   useEffect(() => {
     handleSearch();
   }, [debouncedQuery, searchType, handleSearch]);
 
-  // Buscar ao pressionar Enter
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       handleSearch();
@@ -107,12 +126,7 @@ export default function Search() {
   };
 
   if (isAuthLoading) return <Loading />;
-  if (!user) {
-    router.push("/login");
-    return null;
-  }
 
-  // Componente de resultado extraído
   const ResultItem = ({ result }: { result: SearchResult }) => (
     <div className="bg-white shadow-md rounded-lg p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
       <div className="space-y-1">
