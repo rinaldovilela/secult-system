@@ -1,26 +1,44 @@
 const express = require("express");
+const { v4: uuidv4 } = require("uuid"); // Importar a função v4 para gerar UUIDs
 const db = require("../config/db");
 const { authenticateToken, authorizeRole } = require("../middleware/auth");
 
 const router = express.Router();
 
+// Função auxiliar para validar UUID
+const isValidUUID = (uuid) => {
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+};
+
 // Função auxiliar para criar uma notificação e emitir evento WebSocket
 const createNotification = async (req, userId, type, message) => {
   try {
+    // Validar se o userId é um UUID válido
+    if (!isValidUUID(userId)) {
+      console.error(`[createNotification] userId inválido: ${userId}`);
+      return;
+    }
+
     console.log(
       `[createNotification] Criando notificação para userId: ${userId}, tipo: ${type}`
     );
 
-    const [result] = await db.query(
+    // Gerar um UUID para o campo id
+    const notificationId = uuidv4();
+
+    // Inserir a notificação com o id gerado
+    await db.query(
       `
-      INSERT INTO notifications (user_id, type, message, is_read, created_at)
-      VALUES (?, ?, ?, ?, NOW())
+      INSERT INTO notifications (id, user_id, type, message, is_read, created_at)
+      VALUES (?, ?, ?, ?, ?, NOW())
     `,
-      [userId, type, message, false]
+      [notificationId, userId, type, message, false]
     );
 
     const notification = {
-      id: result.insertId,
+      id: notificationId, // Usar o UUID gerado
       user_id: userId,
       type,
       message,
@@ -76,21 +94,37 @@ router.post("/", authenticateToken, async (req, res) => {
       return res.status(400).json({ error: "Formato de data inválido" });
     }
 
-    // Inserir o evento
-    const [result] = await db.query(
-      `
-      INSERT INTO events (title, description, date, location, target_audience, created_at)
-      VALUES (?, ?, ?, ?, ?, NOW())
-    `,
-      [title, description || null, formattedDate, location, target_audience]
-    );
+    // Gerar um UUID para o evento
+    const eventId = uuidv4();
 
-    const eventId = result.insertId;
+    // Inserir o evento com o id gerado
+    await db.query(
+      `
+      INSERT INTO events (id, title, description, date, location, target_audience, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, NOW())
+    `,
+      [
+        eventId,
+        title,
+        description || null,
+        formattedDate,
+        location,
+        target_audience,
+      ]
+    );
 
     // Adicionar os artistas ao evento e criar notificações
     if (artists && artists.length > 0) {
       for (const artist of artists) {
         const { artist_id, amount } = artist;
+
+        // Validar se o artist_id é um UUID válido
+        if (!isValidUUID(artist_id)) {
+          return res
+            .status(400)
+            .json({ error: `artist_id inválido: ${artist_id}` });
+        }
+
         await db.query(
           "INSERT INTO event_artists (event_id, user_id, amount, is_paid) VALUES (?, ?, ?, ?)",
           [eventId, artist_id, amount, false]
@@ -99,7 +133,7 @@ router.post("/", authenticateToken, async (req, res) => {
         // Criar notificação para o artista
         await createNotification(
           req,
-          artist_id,
+          artist_id, // Já é uma string (UUID)
           "new_event",
           `Você foi adicionado ao evento '${title}' agendado para ${new Date(date).toLocaleDateString()}.`
         );
@@ -161,6 +195,11 @@ router.get("/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Validar se o id é um UUID válido
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: `id inválido: ${id}` });
+    }
+
     // Buscar o evento
     const [events] = await db.query(
       `
@@ -207,6 +246,11 @@ router.put("/:id", authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { title, description, date, location, target_audience } = req.body;
 
+    // Validar se o id é um UUID válido
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: `id inválido: ${id}` });
+    }
+
     // Validar os dados
     if (!title || !date || !location || !target_audience) {
       return res.status(400).json({ error: "Campos obrigatórios ausentes" });
@@ -250,11 +294,20 @@ router.put("/:id", authenticateToken, async (req, res) => {
 });
 
 // POST /api/events/:id/artists - Adicionar um artista a um evento
-// POST /api/events/:id/artists - Adicionar um artista a um evento
 router.post("/:id/artists", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { artist_id, amount } = req.body;
+
+    // Validar se o id e artist_id são UUIDs válidos
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: `id inválido: ${id}` });
+    }
+    if (!isValidUUID(artist_id)) {
+      return res
+        .status(400)
+        .json({ error: `artist_id inválido: ${artist_id}` });
+    }
 
     // Validar os dados
     if (!artist_id || !amount) {
@@ -306,7 +359,7 @@ router.post("/:id/artists", authenticateToken, async (req, res) => {
     );
     await createNotification(
       req,
-      parseInt(artist_id),
+      artist_id, // Já é uma string (UUID)
       "artist_added",
       `Você foi adicionado ao evento '${event.title}' agendado para ${new Date(event.date).toLocaleDateString("pt-BR")}.`
     );
@@ -324,10 +377,17 @@ router.post("/:id/artists", authenticateToken, async (req, res) => {
 });
 
 // DELETE /api/events/:id/artists/:artistId - Remover um artista de um evento
-// DELETE /api/events/:id/artists/:artistId - Remover um artista de um evento
 router.delete("/:id/artists/:artistId", authenticateToken, async (req, res) => {
   try {
     const { id, artistId } = req.params;
+
+    // Validar se o id e artistId são UUIDs válidos
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: `id inválido: ${id}` });
+    }
+    if (!isValidUUID(artistId)) {
+      return res.status(400).json({ error: `artistId inválido: ${artistId}` });
+    }
 
     // Verificar se o usuário é admin ou secretary
     if (!["admin", "secretary"].includes(req.user.role)) {
@@ -365,7 +425,7 @@ router.delete("/:id/artists/:artistId", authenticateToken, async (req, res) => {
     );
     await createNotification(
       req,
-      parseInt(artistId),
+      artistId, // Já é uma string (UUID)
       "artist_removed",
       `Você foi removido do evento '${event.title}' agendado para ${new Date(event.date).toLocaleDateString("pt-BR")}.`
     );
@@ -383,11 +443,18 @@ router.delete("/:id/artists/:artistId", authenticateToken, async (req, res) => {
 });
 
 // PATCH /api/events/:id/artists/:artistId - Atualizar o status de pagamento de um artista
-// PATCH /api/events/:id/artists/:artistId - Atualizar o status de pagamento de um artista
 router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
   try {
     const { id, artistId } = req.params;
     const { is_paid } = req.body;
+
+    // Validar se o id e artistId são UUIDs válidos
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: `id inválido: ${id}` });
+    }
+    if (!isValidUUID(artistId)) {
+      return res.status(400).json({ error: `artistId inválido: ${artistId}` });
+    }
 
     // Validar os dados
     if (typeof is_paid !== "boolean") {
@@ -426,16 +493,13 @@ router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
       [is_paid, id, artistId]
     );
 
-    // Converter artistId para número
-    const artistIdNumber = parseInt(artistId);
-
     // Criar notificação para o artista/grupo
     console.log(
-      `[PATCH /events/:id/artists/:artistId] Gerando notificação para artistId: ${artistIdNumber}`
+      `[PATCH /events/:id/artists/:artistId] Gerando notificação para artistId: ${artistId}`
     );
     await createNotification(
       req,
-      artistIdNumber,
+      artistId, // Já é uma string (UUID)
       "payment_status_updated",
       `O status de pagamento do evento '${event.title}' foi atualizado para ${is_paid ? "Pago" : "Pendente"}.`
     );
@@ -451,10 +515,16 @@ router.patch("/:id/artists/:artistId", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Erro ao atualizar status de pagamento" });
   }
 });
+
 // GET /api/events/details/:id - Buscar detalhes completos de um evento (apenas admin ou secretary)
 router.get("/details/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Validar se o id é um UUID válido
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: `id inválido: ${id}` });
+    }
 
     // Verificar se o usuário tem permissão (admin ou secretary)
     if (!["admin", "secretary"].includes(req.user.role)) {
