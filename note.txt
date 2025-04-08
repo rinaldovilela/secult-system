@@ -1,1 +1,16 @@
 Email: admin@secult.com, Senha: admin123
+
+
+
+Script de migração (migrations/20250408_fix_event_artists_schema.sql):
+
+-- Remover a chave primária atual e índices associados
+ALTER TABLE event_artists DROP PRIMARY KEY;
+ALTER TABLE event_artists DROP INDEX artist_id;
+
+-- Remover os campos legados event_id_old e user_id_old
+ALTER TABLE event_artists DROP COLUMN event_id_old;
+ALTER TABLE event_artists DROP COLUMN user_id_old;
+
+-- Definir a nova chave primária composta por event_id e user_id
+ALTER TABLE event_artists ADD PRIMARY KEY (event_id, user_id);
