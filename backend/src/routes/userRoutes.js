@@ -1,4 +1,5 @@
 const express = require("express");
+const { v4: uuidv4 } = require("uuid"); // Importar a função v4 para gerar UUIDs
 const router = express.Router();
 const db = require("../config/db");
 const { authenticateToken } = require("../middleware/auth");
@@ -6,6 +7,13 @@ const bcrypt = require("bcrypt");
 const multer = require("multer");
 const cpfCnpjValidator = require("cpf-cnpj-validator"); // Para validação de CPF/CNPJ
 const { cpf, cnpj } = cpfCnpjValidator;
+
+// Função auxiliar para validar UUID
+const isValidUUID = (uuid) => {
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+};
 
 // Log para verificar se o arquivo de rotas está sendo acessado
 router.use((req, res, next) => {
@@ -154,14 +162,18 @@ router.post(
         throw new Error("Email já está em uso");
       }
 
+      // Gerar um UUID para o usuário
+      const userId = uuidv4();
+
       // Inserir na tabela users
       const hashedPassword = await bcrypt.hash(password, 10);
-      const [userResult] = await connection.query(
+      await connection.query(
         `INSERT INTO users (
-          name, email, password, role, cpf_cnpj, 
+          id, name, email, password, role, cpf_cnpj, 
           profile_picture, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
         [
+          userId,
           name,
           email,
           hashedPassword,
@@ -170,8 +182,6 @@ router.post(
           files?.profile_picture?.[0]?.buffer || null,
         ]
       );
-
-      const userId = userResult.insertId;
 
       // Inserir na tabela artist_group_details se for artista/grupo
       if (["artist", "group"].includes(role)) {
@@ -241,6 +251,13 @@ router.get("/artists", authenticateToken, async (req, res) => {
 // GET /api/users/me - Buscar detalhes do usuário logado
 router.get("/me", authenticateToken, async (req, res) => {
   try {
+    // Validar se req.user.id é um UUID válido
+    if (!isValidUUID(req.user.id)) {
+      return res
+        .status(400)
+        .json({ error: `ID de usuário inválido: ${req.user.id}` });
+    }
+
     const [users] = await db.query(
       `
       SELECT u.id, u.name, u.email, u.role, u.profile_picture,
@@ -278,6 +295,13 @@ router.put(
   handleMulterError,
   async (req, res) => {
     try {
+      // Validar se req.user.id é um UUID válido
+      if (!isValidUUID(req.user.id)) {
+        return res
+          .status(400)
+          .json({ error: `ID de usuário inválido: ${req.user.id}` });
+      }
+
       const { name, bio, area_of_expertise } = req.body;
       const files = req.files;
 
@@ -320,6 +344,13 @@ router.get("/me/events", authenticateToken, async (req, res) => {
   try {
     if (!["artist", "group"].includes(req.user.role)) {
       return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    // Validar se req.user.id é um UUID válido
+    if (!isValidUUID(req.user.id)) {
+      return res
+        .status(400)
+        .json({ error: `ID de usuário inválido: ${req.user.id}` });
     }
 
     const [events] = await db.query(
@@ -454,16 +485,17 @@ router.post(
         ? files.profile_picture[0].buffer
         : null;
 
-      // Inserir na tabela users
-      const [result] = await db.query(
-        `
-        INSERT INTO users (name, email, password, role, cpf_cnpj, profile_picture, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, NOW())
-      `,
-        [name, email, hashedPassword, role, cpf_cnpj, profilePicture]
-      );
+      // Gerar um UUID para o usuário
+      const userId = uuidv4();
 
-      const userId = result.insertId;
+      // Inserir na tabela users
+      await db.query(
+        `
+        INSERT INTO users (id, name, email, password, role, cpf_cnpj, profile_picture, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+      `,
+        [userId, name, email, hashedPassword, role, cpf_cnpj, profilePicture]
+      );
 
       // Inserir na tabela artist_group_details (se for artist ou group)
       if (["artist", "group"].includes(role)) {
@@ -526,6 +558,11 @@ router.put(
         bank_details,
       } = req.body;
       const files = req.files;
+
+      // Validar se o id é um UUID válido
+      if (!isValidUUID(id)) {
+        return res.status(400).json({ error: `ID inválido: ${id}` });
+      }
 
       // Verificar se o usuário tem permissão (admin ou secretary)
       if (!["admin", "secretary"].includes(req.user.role)) {
@@ -668,6 +705,11 @@ router.get("/details/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Validar se o id é um UUID válido
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: `ID inválido: ${id}` });
+    }
+
     // Verificar se o usuário tem permissão (admin ou secretary)
     if (!["admin", "secretary"].includes(req.user.role)) {
       return res.status(403).json({ error: "Acesso negado" });
@@ -716,6 +758,11 @@ router.get("/details/:id", authenticateToken, async (req, res) => {
 router.get("/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Validar se o id é um UUID válido
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: `ID inválido: ${id}` });
+    }
 
     if (!["admin", "secretary"].includes(req.user.role)) {
       return res.status(403).json({ error: "Acesso negado" });
@@ -775,6 +822,11 @@ router.delete("/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Validar se o id é um UUID válido
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: `ID inválido: ${id}` });
+    }
+
     // Verificar se o usuário tem permissão (admin ou secretary)
     if (!["admin", "secretary"].includes(req.user.role)) {
       return res.status(403).json({ error: "Acesso negado" });
@@ -828,6 +880,11 @@ router.put("/:id/password", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { new_password } = req.body;
+
+    // Validar se o id é um UUID válido
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: `ID inválido: ${id}` });
+    }
 
     // Verificar se o usuário tem permissão (admin ou secretary)
     if (!["admin", "secretary"].includes(req.user.role)) {
