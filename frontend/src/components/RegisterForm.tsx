@@ -223,8 +223,11 @@ export function RegisterForm() {
         formData.append("related_files", values.relatedFiles);
       }
 
+      const BASE_URL =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
       const response = await axios.post(
-        "http://localhost:5000/api/users/register",
+        `${BASE_URL}/api/users/register`,
         formData,
         {
           headers: {

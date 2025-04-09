@@ -81,6 +81,8 @@ export default function EditEventContent() {
     [key: string]: File | null;
   }>({});
 
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
   useEffect(() => {
     if (isAuthLoading) return;
 
@@ -99,12 +101,9 @@ export default function EditEventContent() {
       try {
         const token = localStorage.getItem("token");
 
-        const eventResponse = await axios.get(
-          `http://localhost:5000/api/events/${id}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        const eventResponse = await axios.get(`${BASE_URL}/api/events/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         setEvent(eventResponse.data);
         setTitle(eventResponse.data.title);
         setDescription(eventResponse.data.description || "");
@@ -113,7 +112,7 @@ export default function EditEventContent() {
         setTargetAudience(eventResponse.data.target_audience);
 
         const artistsResponse = await axios.get(
-          "http://localhost:5000/api/users/artists",
+          `${BASE_URL}/api/users/artists`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -121,7 +120,7 @@ export default function EditEventContent() {
         setArtists(artistsResponse.data);
 
         const reportsResponse = await axios.get(
-          `http://localhost:5000/api/events/${id}/reports`,
+          `${BASE_URL}/api/events/${id}/reports`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -158,7 +157,7 @@ export default function EditEventContent() {
         location,
         target_audience: targetAudience,
       };
-      await axios.put(`http://localhost:5000/api/events/${id}`, payload, {
+      await axios.put(`${BASE_URL}/api/events/${id}`, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
       toast.success("Evento atualizado com sucesso!");
@@ -185,7 +184,7 @@ export default function EditEventContent() {
     try {
       const token = localStorage.getItem("token");
       await axios.post(
-        `http://localhost:5000/api/events/${id}/artists`,
+        `${BASE_URL}/api/events/${id}/artists`,
         {
           artist_id: selectedArtistId,
           amount: parseFloat(artistAmount),
@@ -196,12 +195,9 @@ export default function EditEventContent() {
       );
       toast.success("Artista adicionado com sucesso!");
 
-      const eventResponse = await axios.get(
-        `http://localhost:5000/api/events/${id}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const eventResponse = await axios.get(`${BASE_URL}/api/events/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setEvent(eventResponse.data);
       setSelectedArtistId("");
       setArtistAmount("");
@@ -221,20 +217,14 @@ export default function EditEventContent() {
   const handleRemoveArtist = async (artistId: string) => {
     try {
       const token = localStorage.getItem("token");
-      await axios.delete(
-        `http://localhost:5000/api/events/${id}/artists/${artistId}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      await axios.delete(`${BASE_URL}/api/events/${id}/artists/${artistId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       toast.success("Artista removido com sucesso!");
 
-      const eventResponse = await axios.get(
-        `http://localhost:5000/api/events/${id}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const eventResponse = await axios.get(`${BASE_URL}/api/events/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setEvent(eventResponse.data);
       setPaymentProofFiles((prev) => {
         const newFiles = { ...prev };
@@ -269,7 +259,7 @@ export default function EditEventContent() {
       }
 
       await axios.patch(
-        `http://localhost:5000/api/events/${id}/artists/${artistId}`,
+        `${BASE_URL}/api/events/${id}/artists/${artistId}`,
         formData,
         {
           headers: {
@@ -279,12 +269,9 @@ export default function EditEventContent() {
       );
       toast.success("Status de pagamento atualizado com sucesso!");
 
-      const eventResponse = await axios.get(
-        `http://localhost:5000/api/events/${id}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const eventResponse = await axios.get(`${BASE_URL}/api/events/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setEvent(eventResponse.data);
 
       if (!isPaid && paymentProofFiles[artistId]) {
@@ -320,7 +307,7 @@ export default function EditEventContent() {
     try {
       const token = localStorage.getItem("token");
       await axios.patch(
-        `http://localhost:5000/api/events/${id}/artists/${artistId}`,
+        `${BASE_URL}/api/events/${id}/artists/${artistId}`,
         {
           amount: parsedAmount,
         },
@@ -330,12 +317,9 @@ export default function EditEventContent() {
       );
       toast.success("Valor atualizado com sucesso!");
 
-      const eventResponse = await axios.get(
-        `http://localhost:5000/api/events/${id}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const eventResponse = await axios.get(`${BASE_URL}/api/events/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setEvent(eventResponse.data);
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -365,20 +349,16 @@ export default function EditEventContent() {
         formData.append("description", reportDescription);
       }
 
-      await axios.post(
-        `http://localhost:5000/api/events/${id}/reports`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
+      await axios.post(`${BASE_URL}/api/events/${id}/reports`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
       toast.success("Relatório adicionado com sucesso!");
 
       const reportsResponse = await axios.get(
-        `http://localhost:5000/api/events/${id}/reports`,
+        `${BASE_URL}/api/events/${id}/reports`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }

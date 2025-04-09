@@ -33,6 +33,9 @@ export default function Login() {
   const { user, isAuthLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Definir a variável global para a URL da API usando variável de ambiente
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
   useEffect(() => {
     if (isAuthLoading) return;
 
@@ -52,19 +55,17 @@ export default function Login() {
   const onSubmit = async (data: LoginForm) => {
     setIsSubmitting(true);
     try {
-      const response = await axios.post(
-        "http://localhost:5000/api/login",
-        data
-      );
+      const response = await axios.post(`${BASE_URL}/api/login`, data);
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
       window.dispatchEvent(new Event("storage"));
+      toast.success("Login realizado com sucesso!");
       router.push("/");
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        toast.error(
-          `Erro ao fazer login: ${error.response?.data?.error || error.message}`
-        );
+        const errorMessage =
+          error.response?.data?.error || error.message || "Erro desconhecido";
+        toast.error(`Erro ao fazer login: ${errorMessage}`);
       } else {
         toast.error(`Erro ao fazer login: ${String(error)}`);
       }
@@ -98,6 +99,7 @@ export default function Login() {
                       type="email"
                       placeholder="Digite seu email"
                       {...field}
+                      disabled={isSubmitting}
                       className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                     />
                   </FormControl>
@@ -119,6 +121,7 @@ export default function Login() {
                       type="password"
                       placeholder="Digite sua senha"
                       {...field}
+                      disabled={isSubmitting}
                       className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                     />
                   </FormControl>
@@ -126,13 +129,24 @@ export default function Login() {
                 </FormItem>
               )}
             />
-            <Button
-              type="submit"
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? "Entrando..." : "Entrar"}
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Button
+                type="submit"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Entrando..." : "Entrar"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => router.push("/")}
+                className="w-full border-gray-300 text-gray-700 hover:bg-gray-100"
+                disabled={isSubmitting}
+              >
+                Cancelar
+              </Button>
+            </div>
           </form>
         </Form>
       </div>

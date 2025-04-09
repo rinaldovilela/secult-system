@@ -37,6 +37,9 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
+  // Definir a variável global para a URL da API usando variável de ambiente
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
   // Inicializar WebSocket
   useEffect(() => {
     if (!user) return;
@@ -47,7 +50,8 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    const newSocket = io("http://localhost:5000", {
+    // Usar BASE_URL para a conexão WebSocket
+    const newSocket = io(BASE_URL, {
       auth: { token },
       reconnection: true,
       reconnectionAttempts: 5,
@@ -63,7 +67,6 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
     newSocket.on("new_notification", (notification: Notification) => {
       console.log("[SocketContext] Nova notificação recebida:", notification);
       if (notification.user_id === user.id) {
-        // Removed parseInt since ID is now string
         setNotifications((prev) => [notification, ...prev]);
         if (!notification.is_read) {
           setUnreadCount((prev) => prev + 1);
@@ -97,22 +100,30 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
     const fetchNotifications = async () => {
       try {
         const token = getToken();
-        if (!token) return;
+        if (!token) {
+          console.error(
+            "[SocketContext] Token não encontrado para buscar notificações"
+          );
+          return;
+        }
 
-        const response = await fetch(
-          "http://localhost:5000/api/notifications",
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-        if (!response.ok) throw new Error("Erro ao carregar notificações");
+        // Usar BASE_URL para a requisição fetch
+        const response = await fetch(`${BASE_URL}/api/notifications`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Erro ao carregar notificações");
+        }
+
         const data: Notification[] = await response.json();
         setNotifications(data);
         setUnreadCount(data.filter((n) => !n.is_read).length);
       } catch (error) {
         console.error(
           "[SocketContext] Erro ao carregar notificações iniciais:",
-          error
+          error instanceof Error ? error.message : String(error)
         );
       }
     };
@@ -128,7 +139,6 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const markNotificationAsRead = (notificationId: string) => {
-    // Changed parameter type to string
     setNotifications((prev) =>
       prev.map((notif) =>
         notif.id === notificationId ? { ...notif, is_read: true } : notif

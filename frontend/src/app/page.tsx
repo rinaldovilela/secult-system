@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/useAuth";
 import Loading from "@/components/ui/loading";
-import { UserPlus, Calendar, FileText, Search } from "lucide-react";
+import { UserPlus, Calendar, FileText, Search, User } from "lucide-react";
 
 export default function Home() {
   const { user, isAuthLoading } = useAuth() as {
@@ -27,17 +27,23 @@ export default function Home() {
 
         {user ? (
           <div className="space-y-6">
+            {/* Mensagem de boas-vindas com o nome e role do usuário */}
             <p className="text-xl font-semibold text-gray-900">
               Olá, {user.name} ({user.role})!
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
+              {/* Botões para administradores e secretários */}
               {["admin", "secretary"].includes(user.role) && (
                 <>
                   <Button
                     asChild
                     className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white"
                   >
-                    <Link href="/users/new" className="flex items-center gap-2">
+                    <Link
+                      href="/users/new"
+                      className="flex items-center gap-2"
+                      aria-label="Cadastrar um novo artista"
+                    >
                       <UserPlus className="w-5 h-5" />
                       Cadastrar Artista
                     </Link>
@@ -49,6 +55,7 @@ export default function Home() {
                     <Link
                       href="/events/new"
                       className="flex items-center gap-2"
+                      aria-label="Cadastrar um novo evento"
                     >
                       <Calendar className="w-5 h-5" />
                       Cadastrar Evento
@@ -58,22 +65,47 @@ export default function Home() {
                     asChild
                     className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white"
                   >
-                    <Link href="/reports" className="flex items-center gap-2">
+                    <Link
+                      href="/reports"
+                      className="flex items-center gap-2"
+                      aria-label="Gerar relatórios"
+                    >
                       <FileText className="w-5 h-5" />
                       Gerar Relatórios
                     </Link>
                   </Button>
                 </>
               )}
+              {/* Botão para consultar artistas e eventos (disponível para todos os usuários) */}
               <Button
                 asChild
                 className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white"
               >
-                <Link href="/search" className="flex items-center gap-2">
+                <Link
+                  href="/search"
+                  className="flex items-center gap-2"
+                  aria-label="Consultar artistas e eventos"
+                >
                   <Search className="w-5 h-5" />
                   Consultar Artistas e Eventos
                 </Link>
               </Button>
+              {/* Botão adicional para artistas e grupos culturais */}
+              {["artist", "group"].includes(user.role) && (
+                <Button
+                  asChild
+                  className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white"
+                >
+                  <Link
+                    href="/my-events"
+                    className="flex items-center gap-2"
+                    aria-label="Ver meus eventos"
+                  >
+                    <User className="w-5 h-5" />
+                    Meus Eventos
+                  </Link>
+                </Button>
+              )}
             </div>
           </div>
         ) : (
@@ -86,7 +118,11 @@ export default function Home() {
                 asChild
                 className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white"
               >
-                <Link href="/login" className="flex items-center gap-2">
+                <Link
+                  href="/login"
+                  className="flex items-center gap-2"
+                  aria-label="Fazer login no sistema"
+                >
                   <UserPlus className="w-5 h-5" />
                   Login
                 </Link>
@@ -96,7 +132,11 @@ export default function Home() {
                 variant="outline"
                 className="w-full sm:w-auto border-gray-300 text-gray-700 hover:bg-gray-100"
               >
-                <Link href="users/register" className="flex items-center gap-2">
+                <Link
+                  href="/users/register"
+                  className="flex items-center gap-2"
+                  aria-label="Registrar-se no sistema"
+                >
                   <UserPlus className="w-5 h-5" />
                   Registrar
                 </Link>

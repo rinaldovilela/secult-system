@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 interface Event {
   id: string;
@@ -43,8 +44,6 @@ interface EventReport {
   description?: string;
   created_at: string;
 }
-
-const BASE_URL = "http://localhost:5000";
 
 export default function EventDetailsContent() {
   const router = useRouter();
