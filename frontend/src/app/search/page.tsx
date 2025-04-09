@@ -94,7 +94,6 @@ export default function Search() {
         return;
       }
 
-      // Usar BASE_URL para a requisição axios
       const response = await axios.get<SearchResult[]>(
         `${BASE_URL}/api/search`,
         {
@@ -120,7 +119,7 @@ export default function Search() {
     }
 
     return () => controller.abort();
-  }, [debouncedQuery, searchType, router]);
+  }, [debouncedQuery, searchType, router, BASE_URL]);
 
   useEffect(() => {
     handleSearch();

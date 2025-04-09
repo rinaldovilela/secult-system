@@ -65,7 +65,7 @@ export default function Header() {
       if (!token)
         throw new Error("Token não encontrado. Faça login novamente.");
 
-      // Usar BASE_URL para a requisição axios
+      // Use BASE_URL for axios request
       const response = await axios.get(`${BASE_URL}/api/users/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -87,8 +87,7 @@ export default function Header() {
     } finally {
       setIsLoadingUser(false);
     }
-  }, [router]);
-
+  }, [router, BASE_URL]); // Added BASE_URL here
   useEffect(() => {
     if (isAuthLoading || !authUser) return;
     fetchUserProfile();

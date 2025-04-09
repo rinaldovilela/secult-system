@@ -74,7 +74,7 @@ export default function Profile() {
     };
 
     fetchProfile();
-  }, [user, isAuthLoading, router]);
+  }, [user, isAuthLoading, router, BASE_URL]);
 
   if (isAuthLoading || isLoading) return <Loading />;
   if (!user || !profile) return null;

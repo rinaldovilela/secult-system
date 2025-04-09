@@ -84,8 +84,7 @@ export default function NewEvent() {
     };
 
     fetchArtists();
-  }, [user, isAuthLoading, router]);
-
+  }, [user, isAuthLoading, router, BASE_URL]);
   const handleAddArtist = () => {
     if (!selectedArtistId || !artistAmount) {
       toast.error("Selecione um artista e informe o valor");

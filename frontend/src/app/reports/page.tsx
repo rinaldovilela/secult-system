@@ -93,7 +93,7 @@ export default function Reports() {
     };
 
     fetchData();
-  }, [user, isAuthLoading, router]);
+  }, [user, isAuthLoading, router, BASE_URL]);
 
   const downloadCSV = () => {
     const escapeCSVField = (field: string | undefined) => {

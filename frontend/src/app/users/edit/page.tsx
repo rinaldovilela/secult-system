@@ -194,14 +194,14 @@ export default function EditUserPage() {
     const fetchUserData = async () => {
       try {
         const token = getToken();
-        // Usar BASE_URL para a requisição axios
+        // Use BASE_URL for axios request
         const response = await axios.get(`${BASE_URL}/api/users/${id}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
         const userData = response.data;
 
-        // Preencher o formulário com os dados do usuário
+        // Fill form with user data
         form.reset({
           name: userData.name,
           email: userData.email,
@@ -233,7 +233,7 @@ export default function EditUserPage() {
           },
         });
 
-        // Configurar pré-visualização da imagem de perfil se existir
+        // Set profile picture preview if exists
         if (userData.profile_picture) {
           setProfilePreview(
             `data:image/jpeg;base64,${userData.profile_picture}`
@@ -255,7 +255,7 @@ export default function EditUserPage() {
     };
 
     fetchUserData();
-  }, [id, user, isAuthLoading, router, form]);
+  }, [id, user, isAuthLoading, router, form, BASE_URL]);
 
   // Função para formatar a data para o input
   function formatDateForInput(dateString: string) {

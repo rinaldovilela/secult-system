@@ -106,7 +106,7 @@ export default function MyEvents() {
     }
 
     fetchEvents();
-  }, [user, isAuthLoading, router]);
+  }, [user, isAuthLoading, router, BASE_URL]);
 
   if (isAuthLoading || isLoading) return <Loading />;
   if (!user) return null;
