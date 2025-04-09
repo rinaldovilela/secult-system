@@ -1,6 +1,11 @@
 // app/events/edit/page.tsx
-import EditEventContent from "@/components/EditEventContent";
+import { Suspense } from "react";
+import EditEventContent from "./EditEventContent";
 
 export default function EditEvent() {
-  return <EditEventContent />;
+  return (
+    <Suspense fallback={<div>Loading edit form...</div>}>
+      <EditEventContent />
+    </Suspense>
+  );
 }
