@@ -28,6 +28,7 @@ interface BaseResult {
 
 interface EventResult extends BaseResult {
   type: "event";
+  title: string;
   date: string;
 }
 
@@ -133,65 +134,80 @@ export default function Search() {
 
   if (isAuthLoading) return <Loading />;
 
-  const ResultItem = ({ result }: { result: SearchResult }) => (
-    <div className="bg-white shadow-md rounded-lg p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-gray-900">
-          {result.name}{" "}
-          <span className="text-sm text-gray-500">
-            ({result.type === "event" ? "Evento" : "Usuário"})
-          </span>
-        </h2>
+  const ResultItem = ({ result }: { result: SearchResult }) => {
+    console.log("Resultado recebido:", result); // Depuração
 
-        {result.type === "user" ? (
-          <div className="space-y-1">
-            <p className="text-sm text-gray-600 flex items-center gap-2">
-              <Mail className="w-4 h-4 text-indigo-600" />
-              Email: {result.email}
-            </p>
-            <p className="text-sm text-gray-600 flex items-center gap-2">
-              <User className="w-4 h-4 text-indigo-600" />
-              Tipo: {result.role === "artist" ? "Artista" : "Grupo Cultural"}
-            </p>
-          </div>
-        ) : (
-          <p className="text-sm text-gray-600 flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-indigo-600" />
-            Data: {new Date(result.date).toLocaleDateString("pt-BR")}
-          </p>
-        )}
-      </div>
+    return (
+      <div className="bg-white shadow-md rounded-lg p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold text-gray-900">
+            {result.type === "event"
+              ? result.title || "Evento sem título"
+              : result.name || "Usuário sem nome"}{" "}
+            <span className="text-sm text-gray-500">
+              ({result.type === "event" ? "Evento" : "Usuário"})
+            </span>
+          </h2>
 
-      <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-        <Link
-          href={`/${result.type === "event" ? "events" : "users"}?id=${
-            result.id
-          }`}
-          className="w-full sm:w-auto"
-        >
-          <Button
-            variant="outline"
-            className="w-full"
-            aria-label={`Ver detalhes de ${result.name}`}
-          >
-            Ver Detalhes
-          </Button>
-        </Link>
-        {isAdminOrSecretary && (
+          {result.type === "user" ? (
+            <div className="space-y-1">
+              <p className="text-sm text-gray-600 flex items-center gap-2">
+                <Mail className="w-4 h-4 text-indigo-600" />
+                Email: {result.email}
+              </p>
+              <p className="text-sm text-gray-600 flex items-center gap-2">
+                <User className="w-4 h-4 text-indigo-600" />
+                Tipo: {result.role === "artist" ? "Artista" : "Grupo Cultural"}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <p className="text-sm text-gray-600 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-indigo-600" />
+                Data: {new Date(result.date).toLocaleDateString("pt-BR")}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <Link
-            href={`/${result.type === "event" ? "events" : "users"}/edit?id=${
+            href={`/${result.type === "event" ? "events" : "users"}?id=${
               result.id
             }`}
             className="w-full sm:w-auto"
           >
-            <Button className="w-full" aria-label={`Editar ${result.name}`}>
-              Editar
+            <Button
+              variant="outline"
+              className="w-full"
+              aria-label={`Ver detalhes de ${
+                result.type === "event" ? result.title : result.name
+              }`}
+            >
+              Ver Detalhes
             </Button>
           </Link>
-        )}
+          {isAdminOrSecretary && (
+            <Link
+              href={`/${result.type === "event" ? "events" : "users"}/edit?id=${
+                result.id
+              }`}
+              className="w-full sm:w-auto"
+            >
+              <Button
+                className="w-full"
+                aria-label={`Editar ${
+                  result.type === "event" ? result.title : result.name
+                }`}
+              >
+                Editar
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4 sm:px-6 lg:px-8">

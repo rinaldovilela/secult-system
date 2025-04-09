@@ -10,24 +10,26 @@ router.get("/", authenticateToken, async (req, res) => {
 
     let results = [];
 
-    // Buscar eventos
     if (type === "all" || type === "events") {
       const [events] = await db.query(
         `
-        SELECT id, title AS name, date
+        SELECT id, title, date
         FROM events
         WHERE title LIKE ? OR date LIKE ?
-      `,
+        `,
         [`%${query}%`, `%${query}%`]
       );
-      results.push(
-        ...events.map((event) => ({
-          type: "event",
-          id: event.id,
-          name: event.title,
-          date: event.date,
-        }))
-      );
+      console.log("Eventos brutos retornados do banco:", events); // Depuração: dados brutos
+
+      const mappedEvents = events.map((event) => ({
+        type: "event",
+        id: event.id,
+        title: event.title,
+        date: event.date,
+      }));
+      console.log("Eventos mapeados:", mappedEvents); // Depuração: dados mapeados
+
+      results.push(...mappedEvents);
     }
 
     // Buscar usuários (artistas e grupos)
@@ -37,7 +39,7 @@ router.get("/", authenticateToken, async (req, res) => {
         SELECT id, name, email, role
         FROM users
         WHERE (name LIKE ? OR email LIKE ?) AND role IN ('artist', 'group')
-      `,
+        `,
         [`%${query}%`, `%${query}%`]
       );
       results.push(
