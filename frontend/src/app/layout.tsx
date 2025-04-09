@@ -5,7 +5,13 @@ import { Toaster } from "react-hot-toast";
 import Header from "@/components/layout/Header";
 import { SocketProvider } from "@/lib/SocketContext";
 
-const inter = Inter({ subsets: ["latin"] });
+// Configuração otimizada da fonte para export estático
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap", // Melhora o desempenho de carregamento
+  adjustFontFallback: false, // Resolve o problema com assetPrefix
+  variable: "--font-inter", // Opcional: para usar como variável CSS
+});
 
 export const metadata = {
   title: "Secult System",
