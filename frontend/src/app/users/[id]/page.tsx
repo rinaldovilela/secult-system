@@ -1,21 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import axios from "axios";
 import { toast } from "@/components/ui/use-toast";
 import Image from "next/image";
 import {
-  User,
   Mail,
   MapPin,
   CreditCard,
   FileText,
   Video,
-  Calendar,
   Clock,
-  Banknote,
   FileDigit,
   Pencil,
 } from "lucide-react";
@@ -69,7 +66,7 @@ export default function UserDetails() {
   const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchUserDetails = async () => {
+  const fetchUserDetails = useCallback(async () => {
     setIsLoading(true);
     try {
       const token = getToken();
@@ -111,13 +108,13 @@ export default function UserDetails() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [id, router]);
 
   useEffect(() => {
     if (!isAuthLoading && user) {
       fetchUserDetails();
     }
-  }, [isAuthLoading, user]);
+  }, [isAuthLoading, user, fetchUserDetails]);
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return "Não informado";
@@ -285,6 +282,15 @@ export default function UserDetails() {
                     Cadastrado em: {formatDateTime(userDetails.created_at)}
                   </span>
                 </div>
+
+                {userDetails.birth_date && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Clock className="w-4 h-4" />
+                    <span>
+                      Data de Nascimento: {formatDate(userDetails.birth_date)}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 

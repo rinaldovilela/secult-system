@@ -79,7 +79,7 @@ export function RegisterForm() {
       name: "",
       email: "",
       password: "",
-      confirmPassword: "", // Novo campo
+      confirmPassword: "",
       role: "artist",
       cpfCnpj: "",
       bio: "",
@@ -108,7 +108,7 @@ export function RegisterForm() {
     },
   });
 
-  const role = form.watch("role"); // Monitora o campo role para alternar CPF/CNPJ
+  const role = form.watch("role");
 
   const fetchAddressByCep = async (cep: string) => {
     setIsLoadingCep(true);
@@ -127,7 +127,8 @@ export function RegisterForm() {
     } catch (error) {
       toast({
         title: "Erro ao buscar CEP",
-        description: "Tente novamente mais tarde",
+        description:
+          error instanceof Error ? error.message : "Tente novamente mais tarde",
         variant: "destructive",
       });
     } finally {
@@ -142,7 +143,6 @@ export function RegisterForm() {
   ) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validação de tamanho
       if (file.size > MAX_FILE_SIZE) {
         form.setError(field, {
           type: "manual",
@@ -170,7 +170,6 @@ export function RegisterForm() {
     try {
       const formData = new FormData();
 
-      // Dados básicos
       formData.append("name", values.name);
       formData.append("email", values.email);
       formData.append("password", values.password);
@@ -187,7 +186,6 @@ export function RegisterForm() {
       if (values.areaOfExpertise)
         formData.append("area_of_expertise", values.areaOfExpertise);
 
-      // Endereço
       const address = {
         cep: values.address.cep.replace(/\D/g, ""),
         logradouro: values.address.logradouro,
@@ -199,7 +197,6 @@ export function RegisterForm() {
       };
       formData.append("address", JSON.stringify(address));
 
-      // Dados bancários
       const bankDetails = {
         bank_name: values.bankDetails.bank_name,
         account_type: values.bankDetails.account_type,
@@ -213,7 +210,6 @@ export function RegisterForm() {
       };
       formData.append("bank_details", JSON.stringify(bankDetails));
 
-      // Arquivos
       if (values.profilePicture) {
         formData.append("profile_picture", values.profilePicture);
       }
@@ -427,7 +423,6 @@ export function RegisterForm() {
                       <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-neutral-500" />
                     </div>
                   </div>
-
                   <FormMessage />
                 </FormItem>
               )}
@@ -750,6 +745,11 @@ export function RegisterForm() {
                         className="object-cover rounded"
                       />
                     </div>
+                  )}
+                  {field.value && (
+                    <p className="text-sm text-gray-500 mt-1">
+                      Arquivo selecionado: {field.value.name}
+                    </p>
                   )}
                   <FormDescription>
                     Tamanho máximo: {MAX_FILE_SIZE / (1024 * 1024)}MB

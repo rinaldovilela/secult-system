@@ -261,6 +261,7 @@ export const validateCep = async (cep: string) => {
     const data = await response.json();
     return data.erro ? null : data;
   } catch (error) {
+    console.error("Erro ao validar CEP:", error);
     return null;
   }
 };

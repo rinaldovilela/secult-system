@@ -1,7 +1,6 @@
 "use client";
 
 import { RegisterForm } from "@/components/RegisterForm";
-import { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/useAuth";

@@ -222,6 +222,7 @@ export default function NewUser() {
         description: "Verifique os dados e ajuste se necessário.",
       });
     } catch (error) {
+      console.error("Erro ao buscar CEP:", error);
       setCepStatus("error");
       toast({
         title: "Erro ao buscar CEP",
@@ -454,7 +455,7 @@ export default function NewUser() {
                       </FormLabel>
                       <Select
                         onValueChange={field.onChange}
-                        value={field.value}
+                        defaultValue={field.value}
                         disabled={isSubmitting}
                       >
                         <FormControl>
@@ -495,7 +496,7 @@ export default function NewUser() {
                               : "00.000.000/0000-00"
                           }
                           {...field}
-                          onAccept={(value) => field.onChange(value)}
+                          onAccept={(value: string) => field.onChange(value)}
                           disabled={isSubmitting}
                         />
                       </FormControl>
@@ -518,7 +519,7 @@ export default function NewUser() {
                           mask="00/00/0000"
                           placeholder="DD/MM/YYYY"
                           {...field}
-                          onAccept={(value) => field.onChange(value)}
+                          onAccept={(value: string) => field.onChange(value)}
                           disabled={isSubmitting}
                           className="pl-10"
                         />
@@ -588,9 +589,11 @@ export default function NewUser() {
                         <MaskedInput
                           mask="00000-000"
                           placeholder="00000-000"
-                          value={field.value}
-                          onChange={(e) => field.onChange(e.target.value)}
-                          onAccept={(value) => {
+                          defaultValue={field.value}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            field.onChange(e.target.value)
+                          }
+                          onAccept={(value: string) => {
                             field.onChange(value);
                             const cleanValue = value.replace(/\D/g, "");
                             if (cleanValue.length === 8) {
@@ -843,7 +846,7 @@ export default function NewUser() {
                 <FormField
                   control={form.control}
                   name="profilePicture"
-                  render={({ field }) => (
+                  render={({}) => (
                     <FormItem>
                       <FormLabel className="flex items-center gap-2">
                         <ImageIcon className="w-5 h-5 text-indigo-600" />

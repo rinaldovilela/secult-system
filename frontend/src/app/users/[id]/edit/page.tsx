@@ -16,7 +16,6 @@ import {
   FileText,
   Video,
   Calendar,
-  Lock,
   Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -312,8 +311,11 @@ export default function EditUserPage() {
       setCepStatus("error");
       toast({
         title: "Erro ao buscar CEP",
-        description:
-          "Tente novamente mais tarde ou preencha os campos manualmente.",
+        description: axios.isAxiosError(error)
+          ? error.response?.data?.message || error.message
+          : error instanceof Error
+          ? error.message
+          : "Ocorreu um erro inesperado ao buscar o CEP.",
         variant: "destructive",
       });
     } finally {
@@ -523,7 +525,7 @@ export default function EditUserPage() {
                       </FormLabel>
                       <Select
                         onValueChange={field.onChange}
-                        value={field.value}
+                        defaultValue={field.value}
                         disabled={isSubmitting}
                       >
                         <FormControl>
@@ -654,8 +656,7 @@ export default function EditUserPage() {
                         <MaskedInput
                           mask="00000-000"
                           placeholder="00000-000"
-                          value={field.value}
-                          onChange={(e) => field.onChange(e.target.value)}
+                          defaultValue={field.value}
                           onAccept={(value) => {
                             field.onChange(value);
                             const cleanValue = value.replace(/\D/g, "");
@@ -909,7 +910,7 @@ export default function EditUserPage() {
                 <FormField
                   control={form.control}
                   name="profilePicture"
-                  render={({ field }) => (
+                  render={({}) => (
                     <FormItem>
                       <FormLabel className="flex items-center gap-2">
                         <ImageIcon className="w-5 h-5 text-indigo-600" />
