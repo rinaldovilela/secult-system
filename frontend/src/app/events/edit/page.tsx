@@ -1,7 +1,8 @@
+// app/events/edit/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -57,7 +58,8 @@ interface EventReport {
 
 export default function EditEvent() {
   const router = useRouter();
-  const { id } = useParams();
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id"); // Obtém o id dos query params (ex.: /events/edit?id=123)
   const { user, isAuthLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [event, setEvent] = useState<Event | null>(null);
@@ -84,6 +86,12 @@ export default function EditEvent() {
 
     if (user === null || !["admin", "secretary"].includes(user?.role)) {
       router.push("/login");
+      return;
+    }
+
+    if (!id) {
+      toast.error("ID do evento não fornecido.");
+      router.push("/search");
       return;
     }
 
@@ -129,6 +137,7 @@ export default function EditEvent() {
         } else {
           toast.error(`Erro ao buscar dados: ${String(error)}`);
         }
+        router.push("/search");
       } finally {
         setIsLoading(false);
       }
@@ -253,12 +262,12 @@ export default function EditEvent() {
       const token = localStorage.getItem("token");
       const formData = new FormData();
 
-      // Adiciona os dados no formato que o backend espera
-      formData.append("is_paid", JSON.stringify(!isPaid)); // Envia como booleano
+      // Adiciona o campo is_paid como string "true" ou "false"
+      formData.append("is_paid", JSON.stringify(!isPaid));
 
-      // Adiciona o arquivo de comprovante se estiver marcando como pago
+      // Adiciona o arquivo de comprovante se existir e o status estiver sendo marcado como "pago"
       if (!isPaid && paymentProofFiles[artistId]) {
-        formData.append("payment_proof", paymentProofFiles[artistId]!);
+        formData.append("payment_proof", paymentProofFiles[artistId]);
       }
 
       await axios.patch(
@@ -282,7 +291,7 @@ export default function EditEvent() {
       setEvent(eventResponse.data);
 
       // Limpa o arquivo de comprovante se foi usado
-      if (!isPaid) {
+      if (!isPaid && paymentProofFiles[artistId]) {
         setPaymentProofFiles((prev) => {
           const newFiles = { ...prev };
           delete newFiles[artistId];

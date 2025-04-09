@@ -1,3 +1,4 @@
+// app/search/page.tsx
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -158,7 +159,9 @@ export default function Search() {
 
       <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
         <Link
-          href={`/${result.type === "event" ? "events" : "users"}/${result.id}`}
+          href={`/${result.type === "event" ? "events" : "users"}?id=${
+            result.id
+          }`} // Ajustado para usar query params
           className="w-full sm:w-auto"
         >
           <Button variant="outline" className="w-full">
@@ -167,9 +170,9 @@ export default function Search() {
         </Link>
         {isAdminOrSecretary && (
           <Link
-            href={`/${result.type === "event" ? "events" : "users"}/${
+            href={`/${result.type === "event" ? "events" : "users"}/edit?id=${
               result.id
-            }/edit`}
+            }`} // Ajustado para usar query params
             className="w-full sm:w-auto"
           >
             <Button className="w-full">Editar</Button>

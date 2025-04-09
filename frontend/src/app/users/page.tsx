@@ -1,7 +1,8 @@
+// app/users/page.tsx
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import axios from "axios";
 import { toast } from "@/components/ui/use-toast";
@@ -61,12 +62,23 @@ interface UserDetails {
 
 export default function UserDetails() {
   const router = useRouter();
-  const { id } = useParams();
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id"); // Obtém o id dos query params (ex.: /users?id=123)
   const { user, isAuthLoading } = useAuth();
   const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchUserDetails = useCallback(async () => {
+    if (!id) {
+      toast({
+        title: "❌ ID não fornecido",
+        description: "Nenhum ID de usuário foi fornecido na URL.",
+        variant: "destructive",
+      });
+      router.push("/search");
+      return;
+    }
+
     setIsLoading(true);
     try {
       const token = getToken();
@@ -219,7 +231,7 @@ export default function UserDetails() {
           </h1>
           <div className="flex gap-2">
             <Button
-              onClick={() => router.push(`/users/${id}/edit`)}
+              onClick={() => router.push(`/users/edit?id=${id}`)} // Ajustado para usar query params
               className="bg-indigo-600 hover:bg-indigo-700 gap-2"
             >
               <Pencil className="w-4 h-4" />
