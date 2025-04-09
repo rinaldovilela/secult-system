@@ -22,6 +22,7 @@ export default function EditProfile() {
     areaOfExpertise: "",
   });
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
   useEffect(() => {
     if (user) {
@@ -62,7 +63,7 @@ export default function EditProfile() {
       if (profilePicture)
         formDataToSend.append("profile_picture", profilePicture);
 
-      await axios.put("http://localhost:5000/api/users/me", formDataToSend, {
+      await axios.put(`${BASE_URL}/api/users/me`, formDataToSend, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",

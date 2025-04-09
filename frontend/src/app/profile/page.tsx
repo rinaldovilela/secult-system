@@ -27,6 +27,7 @@ export default function Profile() {
   const [isLoading, setIsLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const { user, isAuthLoading } = useAuth();
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -45,7 +46,7 @@ export default function Profile() {
           return;
         }
 
-        const response = await axios.get("http://localhost:5000/api/users/me", {
+        const response = await axios.get(`${BASE_URL}/api/users/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 

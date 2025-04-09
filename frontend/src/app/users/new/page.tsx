@@ -18,6 +18,7 @@ import {
   Image as ImageIcon,
   FileText,
   Video,
+  ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -144,6 +145,9 @@ export default function NewUser() {
     "idle" | "loading" | "success" | "error"
   >("idle");
 
+  // Definir a variável global para a URL da API usando variável de ambiente
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
   const form = useForm<NewUserFormData>({
     resolver: zodResolver(newUserSchema),
     defaultValues: {
@@ -222,12 +226,15 @@ export default function NewUser() {
         description: "Verifique os dados e ajuste se necessário.",
       });
     } catch (error) {
-      console.error("Erro ao buscar CEP:", error);
       setCepStatus("error");
+      const errorMessage = axios.isAxiosError(error)
+        ? error.response?.data?.message || error.message
+        : error instanceof Error
+        ? error.message
+        : "Ocorreu um erro inesperado ao buscar o CEP";
       toast({
         title: "Erro ao buscar CEP",
-        description:
-          "Tente novamente mais tarde ou preencha os campos manualmente.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -329,16 +336,13 @@ export default function NewUser() {
       if (values.relatedFiles)
         formDataToSend.append("related_files", values.relatedFiles);
 
-      await axios.post(
-        "http://localhost:5000/api/users/register",
-        formDataToSend,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
+      // Usar BASE_URL para a requisição axios
+      await axios.post(`${BASE_URL}/api/users/register`, formDataToSend, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
 
       toast({
         title: "✅ Usuário cadastrado com sucesso!",
@@ -346,13 +350,14 @@ export default function NewUser() {
       });
       router.push("/search");
     } catch (error) {
+      const errorMessage = axios.isAxiosError(error)
+        ? error.response?.data?.error || error.message
+        : error instanceof Error
+        ? error.message
+        : "Ocorreu um erro inesperado";
       toast({
         title: "❌ Erro ao cadastrar usuário",
-        description: axios.isAxiosError(error)
-          ? error.response?.data?.error || error.message
-          : error instanceof Error
-          ? error.message
-          : "Ocorreu um erro inesperado",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -370,9 +375,20 @@ export default function NewUser() {
     <div className="min-h-screen bg-gray-100 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
         <div className="bg-white shadow-lg rounded-lg p-6 sm:p-8">
-          <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900">
-            Cadastrar Artista ou Grupo Cultural
-          </h1>
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+              Cadastrar Artista ou Grupo Cultural
+            </h1>
+            <Button
+              variant="outline"
+              onClick={() => router.push("/search")}
+              className="flex items-center gap-2"
+              aria-label="Voltar para a página de busca"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Voltar
+            </Button>
+          </div>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               {/* Dados Pessoais */}
@@ -393,6 +409,7 @@ export default function NewUser() {
                           placeholder="Nome completo"
                           {...field}
                           disabled={isSubmitting}
+                          aria-label="Nome completo do usuário"
                         />
                       </FormControl>
                       <FormMessage />
@@ -415,6 +432,7 @@ export default function NewUser() {
                           placeholder="seu@email.com"
                           {...field}
                           disabled={isSubmitting}
+                          aria-label="Email do usuário"
                         />
                       </FormControl>
                       <FormMessage />
@@ -437,6 +455,7 @@ export default function NewUser() {
                           placeholder="Digite sua senha"
                           {...field}
                           disabled={isSubmitting}
+                          aria-label="Senha do usuário"
                         />
                       </FormControl>
                       <FormMessage />
@@ -459,7 +478,7 @@ export default function NewUser() {
                         disabled={isSubmitting}
                       >
                         <FormControl>
-                          <SelectTrigger>
+                          <SelectTrigger aria-label="Selecione o tipo de cadastro">
                             <SelectValue placeholder="Selecione o tipo" />
                           </SelectTrigger>
                         </FormControl>
@@ -498,6 +517,11 @@ export default function NewUser() {
                           {...field}
                           onAccept={(value: string) => field.onChange(value)}
                           disabled={isSubmitting}
+                          aria-label={
+                            role === "artist"
+                              ? "CPF do artista"
+                              : "CNPJ do grupo cultural"
+                          }
                         />
                       </FormControl>
                       <FormMessage />
@@ -522,6 +546,7 @@ export default function NewUser() {
                           onAccept={(value: string) => field.onChange(value)}
                           disabled={isSubmitting}
                           className="pl-10"
+                          aria-label="Data de nascimento"
                         />
                       </FormControl>
                       <FormMessage />
@@ -542,6 +567,7 @@ export default function NewUser() {
                           {...field}
                           value={field.value || ""}
                           disabled={isSubmitting}
+                          aria-label="Biografia do artista ou grupo"
                         />
                       </FormControl>
                       <FormDescription>
@@ -564,6 +590,7 @@ export default function NewUser() {
                           {...field}
                           value={field.value || ""}
                           disabled={isSubmitting}
+                          aria-label="Área de atuação"
                         />
                       </FormControl>
                       <FormMessage />
@@ -603,6 +630,7 @@ export default function NewUser() {
                           onBlur={() => form.trigger("address.cep")}
                           disabled={isLoadingCep || isSubmitting}
                           className="pl-10"
+                          aria-label="CEP do endereço"
                         />
                       </FormControl>
                       <div className="text-sm mt-1">
@@ -633,7 +661,11 @@ export default function NewUser() {
                       <FormItem>
                         <FormLabel>Logradouro *</FormLabel>
                         <FormControl>
-                          <Input {...field} disabled={isSubmitting} />
+                          <Input
+                            {...field}
+                            disabled={isSubmitting}
+                            aria-label="Logradouro do endereço"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -647,7 +679,11 @@ export default function NewUser() {
                       <FormItem>
                         <FormLabel>Número *</FormLabel>
                         <FormControl>
-                          <Input {...field} disabled={isSubmitting} />
+                          <Input
+                            {...field}
+                            disabled={isSubmitting}
+                            aria-label="Número do endereço"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -666,6 +702,7 @@ export default function NewUser() {
                           {...field}
                           value={field.value || ""}
                           disabled={isSubmitting}
+                          aria-label="Complemento do endereço"
                         />
                       </FormControl>
                       <FormMessage />
@@ -681,7 +718,11 @@ export default function NewUser() {
                       <FormItem>
                         <FormLabel>Bairro *</FormLabel>
                         <FormControl>
-                          <Input {...field} disabled={isSubmitting} />
+                          <Input
+                            {...field}
+                            disabled={isSubmitting}
+                            aria-label="Bairro do endereço"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -695,7 +736,11 @@ export default function NewUser() {
                       <FormItem>
                         <FormLabel>Cidade *</FormLabel>
                         <FormControl>
-                          <Input {...field} disabled={isSubmitting} />
+                          <Input
+                            {...field}
+                            disabled={isSubmitting}
+                            aria-label="Cidade do endereço"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -715,7 +760,7 @@ export default function NewUser() {
                         disabled={isSubmitting}
                       >
                         <FormControl>
-                          <SelectTrigger>
+                          <SelectTrigger aria-label="Selecione o estado">
                             <SelectValue placeholder="Selecione o estado" />
                           </SelectTrigger>
                         </FormControl>
@@ -751,6 +796,7 @@ export default function NewUser() {
                           {...field}
                           disabled={isSubmitting}
                           className="pl-10"
+                          aria-label="Nome do banco"
                         />
                       </FormControl>
                       <FormMessage />
@@ -771,7 +817,7 @@ export default function NewUser() {
                           disabled={isSubmitting}
                         >
                           <FormControl>
-                            <SelectTrigger>
+                            <SelectTrigger aria-label="Selecione o tipo de conta">
                               <SelectValue placeholder="Selecione" />
                             </SelectTrigger>
                           </FormControl>
@@ -796,7 +842,11 @@ export default function NewUser() {
                       <FormItem>
                         <FormLabel>Agência *</FormLabel>
                         <FormControl>
-                          <Input {...field} disabled={isSubmitting} />
+                          <Input
+                            {...field}
+                            disabled={isSubmitting}
+                            aria-label="Número da agência"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -812,7 +862,11 @@ export default function NewUser() {
                       <FormItem>
                         <FormLabel>Número da Conta *</FormLabel>
                         <FormControl>
-                          <Input {...field} disabled={isSubmitting} />
+                          <Input
+                            {...field}
+                            disabled={isSubmitting}
+                            aria-label="Número da conta bancária"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -830,6 +884,7 @@ export default function NewUser() {
                             {...field}
                             value={field.value || ""}
                             disabled={isSubmitting}
+                            aria-label="Chave PIX"
                           />
                         </FormControl>
                         <FormMessage />
@@ -979,7 +1034,11 @@ export default function NewUser() {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <Button type="submit" disabled={isSubmitting}>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  aria-label="Cadastrar novo usuário"
+                >
                   {isSubmitting ? "Cadastrando..." : "Cadastrar"}
                 </Button>
                 <Button
@@ -987,6 +1046,7 @@ export default function NewUser() {
                   variant="outline"
                   onClick={() => router.push("/search")}
                   disabled={isSubmitting}
+                  aria-label="Cancelar cadastro"
                 >
                   Cancelar
                 </Button>

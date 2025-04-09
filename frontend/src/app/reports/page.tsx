@@ -55,7 +55,7 @@ export default function Reports() {
   const { user, isAuthLoading } = useAuth();
   const [artists, setArtists] = useState<Artist[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
-
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   useEffect(() => {
     if (isAuthLoading) return;
 
@@ -68,10 +68,10 @@ export default function Reports() {
       try {
         const token = localStorage.getItem("token");
         const [artistsResponse, eventsResponse] = await Promise.all([
-          axios.get("http://localhost:5000/api/artists", {
+          axios.get(`${BASE_URL}/api/artists`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          axios.get("http://localhost:5000/api/events", {
+          axios.get(`${BASE_URL}/api/events`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);

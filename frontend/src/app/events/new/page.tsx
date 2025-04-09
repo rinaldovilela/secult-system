@@ -16,7 +16,15 @@ import {
 } from "@/components/ui/select";
 import { Combobox } from "@/components/ui/combobox";
 import Loading from "@/components/ui/loading";
-import { Calendar, MapPin, Users, FileText, DollarSign } from "lucide-react";
+import {
+  Calendar,
+  MapPin,
+  Users,
+  FileText,
+  DollarSign,
+  ArrowLeft,
+} from "lucide-react";
+import { getToken } from "@/lib/auth";
 
 interface Artist {
   id: string;
@@ -43,6 +51,9 @@ export default function NewEvent() {
   const [artistAmount, setArtistAmount] = useState("");
   const [eventArtists, setEventArtists] = useState<EventArtist[]>([]);
 
+  // Definir a variável global para a URL da API usando variável de ambiente
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
   useEffect(() => {
     if (isAuthLoading) return;
 
@@ -53,24 +64,20 @@ export default function NewEvent() {
 
     const fetchArtists = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const response = await axios.get(
-          "http://localhost:5000/api/users/artists",
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        const token = getToken();
+        if (!token) {
+          throw new Error("Token não encontrado. Faça login novamente.");
+        }
+        // Usar BASE_URL para a requisição axios
+        const response = await axios.get(`${BASE_URL}/api/users/artists`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         setArtists(response.data);
       } catch (error) {
-        if (axios.isAxiosError(error)) {
-          toast.error(
-            `Erro ao buscar artistas: ${
-              error.response?.data?.error || error.message
-            }`
-          );
-        } else {
-          toast.error(`Erro ao buscar artistas: ${String(error)}`);
-        }
+        const errorMessage = axios.isAxiosError(error)
+          ? error.response?.data?.error || error.message
+          : String(error);
+        toast.error(`Erro ao buscar artistas: ${errorMessage}`);
       } finally {
         setIsLoading(false);
       }
@@ -129,7 +136,10 @@ export default function NewEvent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
+      if (!token) {
+        throw new Error("Token não encontrado. Faça login novamente.");
+      }
       const formattedDate = new Date(date).toISOString();
       const payload = {
         title,
@@ -142,21 +152,17 @@ export default function NewEvent() {
           amount: ea.amount,
         })),
       };
-      await axios.post("http://localhost:5000/api/events", payload, {
+      // Usar BASE_URL para a requisição axios
+      await axios.post(`${BASE_URL}/api/events`, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
       toast.success("Evento criado com sucesso!");
       router.push("/search");
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        toast.error(
-          `Erro ao criar evento: ${
-            error.response?.data?.error || error.message
-          }`
-        );
-      } else {
-        toast.error(`Erro ao criar evento: ${String(error)}`);
-      }
+      const errorMessage = axios.isAxiosError(error)
+        ? error.response?.data?.error || error.message
+        : String(error);
+      toast.error(`Erro ao criar evento: ${errorMessage}`);
     }
   };
 
@@ -172,9 +178,20 @@ export default function NewEvent() {
     <div className="min-h-screen bg-gray-100 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
         <div className="bg-white shadow-lg rounded-lg p-6 sm:p-8">
-          <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900">
-            Criar Novo Evento
-          </h1>
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+              Criar Novo Evento
+            </h1>
+            <Button
+              variant="outline"
+              onClick={() => router.push("/search")}
+              className="flex items-center gap-2"
+              aria-label="Voltar para a página de busca"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Voltar
+            </Button>
+          </div>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
@@ -187,6 +204,7 @@ export default function NewEvent() {
                 onChange={(e) => setTitle(e.target.value)}
                 required
                 className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                aria-label="Título do evento"
               />
             </div>
             <div>
@@ -199,6 +217,7 @@ export default function NewEvent() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                aria-label="Descrição do evento"
               />
             </div>
             <div>
@@ -212,6 +231,7 @@ export default function NewEvent() {
                 onChange={(e) => setDate(e.target.value)}
                 required
                 className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                aria-label="Data do evento"
               />
             </div>
             <div>
@@ -225,6 +245,7 @@ export default function NewEvent() {
                 onChange={(e) => setLocation(e.target.value)}
                 required
                 className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                aria-label="Local do evento"
               />
             </div>
             <div>
@@ -233,7 +254,10 @@ export default function NewEvent() {
                 Público-Alvo
               </label>
               <Select onValueChange={setTargetAudience} value={targetAudience}>
-                <SelectTrigger className="mt-1 w-full">
+                <SelectTrigger
+                  className="mt-1 w-full"
+                  aria-label="Selecione o público-alvo"
+                >
                   <SelectValue placeholder="Selecione o público-alvo" />
                 </SelectTrigger>
                 <SelectContent>
@@ -260,6 +284,7 @@ export default function NewEvent() {
                     onChange={setSelectedArtistId}
                     placeholder="Selecione um artista..."
                     className="mt-1"
+                    aria-label="Selecionar artista para o evento"
                   />
                 </div>
                 <div className="flex-1">
@@ -273,10 +298,15 @@ export default function NewEvent() {
                     onChange={(e) => setArtistAmount(e.target.value)}
                     placeholder="Digite o valor"
                     className="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    aria-label="Quantia a ser paga ao artista"
                   />
                 </div>
                 <div className="flex items-end">
-                  <Button type="button" onClick={handleAddArtist}>
+                  <Button
+                    type="button"
+                    onClick={handleAddArtist}
+                    aria-label="Adicionar artista ao evento"
+                  >
                     Adicionar
                   </Button>
                 </div>
@@ -301,12 +331,14 @@ export default function NewEvent() {
                             )
                           }
                           className="w-32 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                          aria-label={`Quantia para o artista ${ea.artist_name}`}
                         />
                       </div>
                       <Button
                         variant="destructive"
                         size="sm"
                         onClick={() => handleRemoveArtist(ea.artist_id)}
+                        aria-label={`Remover artista ${ea.artist_name} do evento`}
                       >
                         Remover
                       </Button>
@@ -322,6 +354,7 @@ export default function NewEvent() {
               <Button
                 type="submit"
                 className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white"
+                aria-label="Criar novo evento"
               >
                 Criar Evento
               </Button>
@@ -330,6 +363,7 @@ export default function NewEvent() {
                 variant="outline"
                 onClick={() => router.push("/search")}
                 className="w-full sm:w-auto border-gray-300 text-gray-700 hover:bg-gray-100"
+                aria-label="Cancelar criação do evento"
               >
                 Cancelar
               </Button>

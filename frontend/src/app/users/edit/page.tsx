@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,6 +17,7 @@ import {
   Video,
   Calendar,
   Image as ImageIcon,
+  ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -133,7 +134,9 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
 export default function EditUserPage() {
   const router = useRouter();
-  const { id } = useParams();
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id");
+
   const { user, isAuthLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -145,6 +148,10 @@ export default function EditUserPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [newPassword, setNewPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  // Definir a variável global para a URL da API usando variável de ambiente
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
   const form = useForm<EditUserFormData>({
     resolver: zodResolver(editUserSchema),
@@ -187,12 +194,10 @@ export default function EditUserPage() {
     const fetchUserData = async () => {
       try {
         const token = getToken();
-        const response = await axios.get(
-          `http://localhost:5000/api/users/${id}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        // Usar BASE_URL para a requisição axios
+        const response = await axios.get(`${BASE_URL}/api/users/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
         const userData = response.data;
 
@@ -235,11 +240,12 @@ export default function EditUserPage() {
           );
         }
       } catch (error) {
+        const errorMessage = axios.isAxiosError(error)
+          ? error.response?.data?.error || error.message
+          : "Ocorreu um erro inesperado";
         toast({
           title: "Erro ao carregar usuário",
-          description: axios.isAxiosError(error)
-            ? error.response?.data?.error || error.message
-            : "Ocorreu um erro inesperado",
+          description: errorMessage,
           variant: "destructive",
         });
         router.push(`/users/${id}`);
@@ -309,13 +315,14 @@ export default function EditUserPage() {
       });
     } catch (error) {
       setCepStatus("error");
+      const errorMessage = axios.isAxiosError(error)
+        ? error.response?.data?.message || error.message
+        : error instanceof Error
+        ? error.message
+        : "Ocorreu um erro inesperado ao buscar o CEP";
       toast({
         title: "Erro ao buscar CEP",
-        description: axios.isAxiosError(error)
-          ? error.response?.data?.message || error.message
-          : error instanceof Error
-          ? error.message
-          : "Ocorreu um erro inesperado ao buscar o CEP.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -416,7 +423,8 @@ export default function EditUserPage() {
       if (values.relatedFiles)
         formDataToSend.append("related_files", values.relatedFiles);
 
-      await axios.put(`http://localhost:5000/api/users/${id}`, formDataToSend, {
+      // Usar BASE_URL para a requisição axios
+      await axios.put(`${BASE_URL}/api/users/${id}`, formDataToSend, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
@@ -429,13 +437,14 @@ export default function EditUserPage() {
       });
       router.push(`/users/${id}`);
     } catch (error) {
+      const errorMessage = axios.isAxiosError(error)
+        ? error.response?.data?.error || error.message
+        : error instanceof Error
+        ? error.message
+        : "Ocorreu um erro inesperado";
       toast({
         title: "❌ Erro ao atualizar usuário",
-        description: axios.isAxiosError(error)
-          ? error.response?.data?.error || error.message
-          : error instanceof Error
-          ? error.message
-          : "Ocorreu um erro inesperado",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -460,7 +469,10 @@ export default function EditUserPage() {
             <Button
               variant="outline"
               onClick={() => router.push(`/users/${id}`)}
+              className="flex items-center gap-2"
+              aria-label="Voltar para os detalhes do usuário"
             >
+              <ArrowLeft className="w-4 h-4" />
               Voltar
             </Button>
           </div>
@@ -485,6 +497,7 @@ export default function EditUserPage() {
                           placeholder="Nome completo"
                           {...field}
                           disabled={isSubmitting}
+                          aria-label="Nome completo do usuário"
                         />
                       </FormControl>
                       <FormMessage />
@@ -507,6 +520,7 @@ export default function EditUserPage() {
                           placeholder="seu@email.com"
                           {...field}
                           disabled={isSubmitting}
+                          aria-label="Email do usuário"
                         />
                       </FormControl>
                       <FormMessage />
@@ -529,7 +543,7 @@ export default function EditUserPage() {
                         disabled={isSubmitting}
                       >
                         <FormControl>
-                          <SelectTrigger>
+                          <SelectTrigger aria-label="Selecione o tipo de cadastro">
                             <SelectValue placeholder="Selecione o tipo" />
                           </SelectTrigger>
                         </FormControl>
@@ -568,6 +582,11 @@ export default function EditUserPage() {
                           {...field}
                           onAccept={(value) => field.onChange(value)}
                           disabled={isSubmitting}
+                          aria-label={
+                            role === "artist"
+                              ? "CPF do artista"
+                              : "CNPJ do grupo cultural"
+                          }
                         />
                       </FormControl>
                       <FormMessage />
@@ -592,6 +611,7 @@ export default function EditUserPage() {
                           onAccept={(value) => field.onChange(value)}
                           disabled={isSubmitting}
                           className="pl-10"
+                          aria-label="Data de nascimento"
                         />
                       </FormControl>
                       <FormMessage />
@@ -612,6 +632,7 @@ export default function EditUserPage() {
                           {...field}
                           value={field.value || ""}
                           disabled={isSubmitting}
+                          aria-label="Biografia do artista ou grupo"
                         />
                       </FormControl>
                       <FormMessage />
@@ -631,6 +652,7 @@ export default function EditUserPage() {
                           {...field}
                           value={field.value || ""}
                           disabled={isSubmitting}
+                          aria-label="Área de atuação"
                         />
                       </FormControl>
                       <FormMessage />
@@ -667,6 +689,7 @@ export default function EditUserPage() {
                           onBlur={() => form.trigger("address.cep")}
                           disabled={isLoadingCep || isSubmitting}
                           className="pl-10"
+                          aria-label="CEP do endereço"
                         />
                       </FormControl>
                       <div className="text-sm mt-1">
@@ -697,7 +720,11 @@ export default function EditUserPage() {
                       <FormItem>
                         <FormLabel>Logradouro *</FormLabel>
                         <FormControl>
-                          <Input {...field} disabled={isSubmitting} />
+                          <Input
+                            {...field}
+                            disabled={isSubmitting}
+                            aria-label="Logradouro do endereço"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -711,7 +738,11 @@ export default function EditUserPage() {
                       <FormItem>
                         <FormLabel>Número *</FormLabel>
                         <FormControl>
-                          <Input {...field} disabled={isSubmitting} />
+                          <Input
+                            {...field}
+                            disabled={isSubmitting}
+                            aria-label="Número do endereço"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -730,6 +761,7 @@ export default function EditUserPage() {
                           {...field}
                           value={field.value || ""}
                           disabled={isSubmitting}
+                          aria-label="Complemento do endereço"
                         />
                       </FormControl>
                       <FormMessage />
@@ -745,7 +777,11 @@ export default function EditUserPage() {
                       <FormItem>
                         <FormLabel>Bairro *</FormLabel>
                         <FormControl>
-                          <Input {...field} disabled={isSubmitting} />
+                          <Input
+                            {...field}
+                            disabled={isSubmitting}
+                            aria-label="Bairro do endereço"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -759,7 +795,11 @@ export default function EditUserPage() {
                       <FormItem>
                         <FormLabel>Cidade *</FormLabel>
                         <FormControl>
-                          <Input {...field} disabled={isSubmitting} />
+                          <Input
+                            {...field}
+                            disabled={isSubmitting}
+                            aria-label="Cidade do endereço"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -779,7 +819,7 @@ export default function EditUserPage() {
                         disabled={isSubmitting}
                       >
                         <FormControl>
-                          <SelectTrigger>
+                          <SelectTrigger aria-label="Selecione o estado">
                             <SelectValue placeholder="Selecione o estado" />
                           </SelectTrigger>
                         </FormControl>
@@ -815,6 +855,7 @@ export default function EditUserPage() {
                           {...field}
                           disabled={isSubmitting}
                           className="pl-10"
+                          aria-label="Nome do banco"
                         />
                       </FormControl>
                       <FormMessage />
@@ -835,7 +876,7 @@ export default function EditUserPage() {
                           disabled={isSubmitting}
                         >
                           <FormControl>
-                            <SelectTrigger>
+                            <SelectTrigger aria-label="Selecione o tipo de conta">
                               <SelectValue placeholder="Selecione" />
                             </SelectTrigger>
                           </FormControl>
@@ -860,7 +901,11 @@ export default function EditUserPage() {
                       <FormItem>
                         <FormLabel>Agência *</FormLabel>
                         <FormControl>
-                          <Input {...field} disabled={isSubmitting} />
+                          <Input
+                            {...field}
+                            disabled={isSubmitting}
+                            aria-label="Número da agência"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -876,7 +921,11 @@ export default function EditUserPage() {
                       <FormItem>
                         <FormLabel>Número da Conta *</FormLabel>
                         <FormControl>
-                          <Input {...field} disabled={isSubmitting} />
+                          <Input
+                            {...field}
+                            disabled={isSubmitting}
+                            aria-label="Número da conta bancária"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -894,6 +943,7 @@ export default function EditUserPage() {
                             {...field}
                             value={field.value || ""}
                             disabled={isSubmitting}
+                            aria-label="Chave PIX"
                           />
                         </FormControl>
                         <FormMessage />
@@ -928,6 +978,7 @@ export default function EditUserPage() {
                             )
                           }
                           disabled={isSubmitting}
+                          aria-label="Selecionar foto de perfil"
                         />
                       </FormControl>
                       {profilePreview && (
@@ -960,6 +1011,7 @@ export default function EditUserPage() {
                           accept="application/pdf"
                           onChange={(e) => handleFileChange("portfolio", e)}
                           disabled={isSubmitting}
+                          aria-label="Selecionar portfólio em PDF"
                         />
                       </FormControl>
                       {field.value && (
@@ -987,6 +1039,7 @@ export default function EditUserPage() {
                           accept="video/mp4,video/webm,video/ogg"
                           onChange={(e) => handleFileChange("video", e)}
                           disabled={isSubmitting}
+                          aria-label="Selecionar vídeo"
                         />
                       </FormControl>
                       {field.value && (
@@ -1013,6 +1066,7 @@ export default function EditUserPage() {
                           type="file"
                           onChange={(e) => handleFileChange("relatedFiles", e)}
                           disabled={isSubmitting}
+                          aria-label="Selecionar arquivos relacionados"
                         />
                       </FormControl>
                       {field.value && (
@@ -1027,7 +1081,11 @@ export default function EditUserPage() {
               </div>
 
               <div className="flex justify-end gap-4 pt-6">
-                <Button type="submit" disabled={isSubmitting}>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  aria-label="Salvar alterações do usuário"
+                >
                   {isSubmitting ? "Salvando..." : "Salvar Alterações"}
                 </Button>
                 <Button
@@ -1035,6 +1093,7 @@ export default function EditUserPage() {
                   variant="outline"
                   onClick={() => router.push(`/users/${id}`)}
                   disabled={isSubmitting}
+                  aria-label="Cancelar edição"
                 >
                   Cancelar
                 </Button>
@@ -1043,6 +1102,7 @@ export default function EditUserPage() {
                   variant="secondary"
                   onClick={() => setShowPasswordDialog(true)}
                   disabled={isSubmitting}
+                  aria-label="Alterar senha do usuário"
                 >
                   Alterar Senha
                 </Button>
@@ -1051,6 +1111,7 @@ export default function EditUserPage() {
                   variant="destructive"
                   onClick={() => setShowDeleteDialog(true)}
                   disabled={isSubmitting}
+                  aria-label="Deletar usuário"
                 >
                   Deletar Usuário
                 </Button>
@@ -1075,21 +1136,24 @@ export default function EditUserPage() {
             <AlertDialogAction
               onClick={async () => {
                 try {
-                  await axios.delete(`http://localhost:5000/api/users/${id}`, {
+                  // Usar BASE_URL para a requisição axios
+                  await axios.delete(`${BASE_URL}/api/users/${id}`, {
                     headers: { Authorization: `Bearer ${getToken()}` },
                   });
                   toast({ title: "Usuário deletado com sucesso" });
                   router.push("/search");
                 } catch (error) {
+                  const errorMessage = axios.isAxiosError(error)
+                    ? error.response?.data?.error || error.message
+                    : "Ocorreu um erro inesperado";
                   toast({
                     title: "Erro ao deletar usuário",
-                    description: axios.isAxiosError(error)
-                      ? error.response?.data?.error || error.message
-                      : "Ocorreu um erro inesperado",
+                    description: errorMessage,
                     variant: "destructive",
                   });
                 }
               }}
+              aria-label="Confirmar exclusão do usuário"
             >
               Confirmar
             </AlertDialogAction>
@@ -1108,31 +1172,52 @@ export default function EditUserPage() {
               type="password"
               placeholder="Nova senha"
               value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
+              onChange={(e) => {
+                setNewPassword(e.target.value);
+                if (e.target.value.length < 6) {
+                  setPasswordError("A senha deve ter pelo menos 6 caracteres");
+                } else {
+                  setPasswordError(null);
+                }
+              }}
+              aria-label="Nova senha do usuário"
             />
+            {passwordError && (
+              <p className="text-sm text-red-600">{passwordError}</p>
+            )}
           </div>
           <DialogFooter>
             <Button
               onClick={async () => {
+                if (newPassword.length < 6) {
+                  setPasswordError("A senha deve ter pelo menos 6 caracteres");
+                  return;
+                }
+
                 try {
+                  // Usar BASE_URL para a requisição axios
                   await axios.put(
-                    `http://localhost:5000/api/users/${id}/password`,
+                    `${BASE_URL}/api/users/${id}/password`,
                     { new_password: newPassword },
                     { headers: { Authorization: `Bearer ${getToken()}` } }
                   );
                   toast({ title: "Senha alterada com sucesso" });
                   setShowPasswordDialog(false);
                   setNewPassword("");
+                  setPasswordError(null);
                 } catch (error) {
+                  const errorMessage = axios.isAxiosError(error)
+                    ? error.response?.data?.error || error.message
+                    : "Ocorreu um erro inesperado";
                   toast({
                     title: "Erro ao alterar senha",
-                    description: axios.isAxiosError(error)
-                      ? error.response?.data?.error || error.message
-                      : "Ocorreu um erro inesperado",
+                    description: errorMessage,
                     variant: "destructive",
                   });
                 }
               }}
+              disabled={!!passwordError || newPassword.length === 0}
+              aria-label="Salvar nova senha"
             >
               Salvar
             </Button>

@@ -9,13 +9,16 @@ import Loading from "@/components/ui/loading";
 import { getToken } from "@/lib/auth";
 import { useSocket } from "@/lib/SocketContext";
 import { Button } from "@/components/ui/button";
-import { Bell, CheckCircle } from "lucide-react";
+import { Bell, CheckCircle, ArrowLeft } from "lucide-react";
 
 export default function Notifications() {
   const router = useRouter();
   const { user, isAuthLoading } = useAuth();
   const { notifications, markNotificationAsRead } = useSocket();
   const [isLoading, setIsLoading] = useState(true);
+
+  // Definir a variável global para a URL da API usando variável de ambiente
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -33,8 +36,9 @@ export default function Notifications() {
         throw new Error("Token não encontrado. Faça login novamente.");
       }
 
+      // Usar BASE_URL para a requisição axios
       await axios.patch(
-        `http://localhost:5000/api/notifications/${notificationId}/read`,
+        `${BASE_URL}/api/notifications/${notificationId}/read`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -42,13 +46,10 @@ export default function Notifications() {
       markNotificationAsRead(notificationId);
       toast.success("Notificação marcada como lida");
     } catch (error) {
-      toast.error(
-        axios.isAxiosError(error)
-          ? `Erro ao marcar notificação: ${
-              error.response?.data?.error || error.message
-            }`
-          : `Erro ao marcar notificação: ${String(error)}`
-      );
+      const errorMessage = axios.isAxiosError(error)
+        ? error.response?.data?.error || error.message
+        : String(error);
+      toast.error(`Erro ao marcar notificação: ${errorMessage}`);
     }
   };
 
@@ -58,9 +59,20 @@ export default function Notifications() {
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900">
-          Minhas Notificações
-        </h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+            Minhas Notificações
+          </h1>
+          <Button
+            variant="outline"
+            onClick={() => router.push("/")}
+            className="flex items-center gap-2"
+            aria-label="Voltar para o dashboard"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Voltar
+          </Button>
+        </div>
 
         {notifications.length === 0 ? (
           <div className="bg-white shadow-lg rounded-lg p-6 text-center">
@@ -109,6 +121,7 @@ export default function Notifications() {
                     size="sm"
                     onClick={() => handleMarkAsRead(notification.id)}
                     className="border-gray-300 text-gray-700 hover:bg-gray-100"
+                    aria-label={`Marcar notificação "${notification.message}" como lida`}
                   >
                     <CheckCircle className="w-4 h-4 mr-2" />
                     Marcar como Lida

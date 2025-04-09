@@ -32,7 +32,7 @@ export default function MyEvents() {
   const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   useEffect(() => {
     const fetchEvents = async () => {
       try {
@@ -41,14 +41,11 @@ export default function MyEvents() {
           throw new Error("Token não encontrado. Faça login novamente.");
         }
 
-        const response = await axios.get(
-          "http://localhost:5000/api/users/me/events",
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+        const response = await axios.get(`${BASE_URL}/api/users/me/events`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
         console.log("Dados retornados pela API:", response.data);
 

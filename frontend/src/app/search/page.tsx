@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import Link from "next/link";
 import Loading from "@/components/ui/loading";
-import { Calendar, Mail, User } from "lucide-react";
+import { Calendar, Mail, User, ArrowLeft } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { useDebounce } from "@/hooks/useDebounce";
 
@@ -49,6 +49,9 @@ export default function Search() {
   const [isLoading, setIsLoading] = useState(false);
   const debouncedQuery = useDebounce(query, 500);
 
+  // Definir a variável global para a URL da API usando variável de ambiente
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
   const isAdminOrSecretary = ["admin", "secretary"].includes(user?.role || "");
 
   useEffect(() => {
@@ -66,7 +69,7 @@ export default function Search() {
           "Apenas administradores e secretários podem acessar esta página.",
         variant: "destructive",
       });
-      router.push("/dashboard");
+      router.push("/");
     }
   }, [isAuthLoading, user, router]);
 
@@ -91,8 +94,9 @@ export default function Search() {
         return;
       }
 
+      // Usar BASE_URL para a requisição axios
       const response = await axios.get<SearchResult[]>(
-        "http://localhost:5000/api/search",
+        `${BASE_URL}/api/search`,
         {
           params: { type: searchType, query: debouncedQuery },
           headers: { Authorization: `Bearer ${token}` },
@@ -103,9 +107,11 @@ export default function Search() {
     } catch (error) {
       if (axios.isAxiosError(error) && error.name !== "CanceledError") {
         setResults([]);
+        const errorMessage =
+          error.response?.data?.error || error.message || "Erro desconhecido";
         toast({
           title: "Erro na busca",
-          description: error.response?.data?.error || error.message,
+          description: errorMessage,
           variant: "destructive",
         });
       }
@@ -161,10 +167,14 @@ export default function Search() {
         <Link
           href={`/${result.type === "event" ? "events" : "users"}?id=${
             result.id
-          }`} // Ajustado para usar query params
+          }`}
           className="w-full sm:w-auto"
         >
-          <Button variant="outline" className="w-full">
+          <Button
+            variant="outline"
+            className="w-full"
+            aria-label={`Ver detalhes de ${result.name}`}
+          >
             Ver Detalhes
           </Button>
         </Link>
@@ -172,10 +182,12 @@ export default function Search() {
           <Link
             href={`/${result.type === "event" ? "events" : "users"}/edit?id=${
               result.id
-            }`} // Ajustado para usar query params
+            }`}
             className="w-full sm:w-auto"
           >
-            <Button className="w-full">Editar</Button>
+            <Button className="w-full" aria-label={`Editar ${result.name}`}>
+              Editar
+            </Button>
           </Link>
         )}
       </div>
@@ -185,9 +197,20 @@ export default function Search() {
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900">
-          Busca de Eventos e Usuários
-        </h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+            Busca de Eventos e Usuários
+          </h1>
+          <Button
+            variant="outline"
+            onClick={() => router.push("/dashboard")}
+            className="flex items-center gap-2"
+            aria-label="Voltar para o dashboard"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Voltar
+          </Button>
+        </div>
 
         <div className="bg-white shadow-lg rounded-lg p-6 sm:p-8 mb-6">
           <div className="flex flex-col sm:flex-row gap-4 mb-4">
@@ -212,9 +235,14 @@ export default function Search() {
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               className="flex-1"
+              aria-label="Digite o termo de busca"
             />
 
-            <Button onClick={handleSearch} disabled={isLoading}>
+            <Button
+              onClick={handleSearch}
+              disabled={isLoading}
+              aria-label="Buscar eventos e usuários"
+            >
               {isLoading ? "Buscando..." : "Buscar"}
             </Button>
           </div>

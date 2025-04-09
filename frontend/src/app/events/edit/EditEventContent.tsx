@@ -143,7 +143,7 @@ export default function EditEventContent() {
     };
 
     fetchEventAndArtists();
-  }, [id, user, isAuthLoading, router]);
+  }, [id, user, isAuthLoading, router, BASE_URL]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

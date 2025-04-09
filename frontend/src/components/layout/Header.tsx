@@ -1,7 +1,6 @@
 // components/layout/Header.tsx
 "use client";
 
-// Removed duplicate import of useState and useEffect
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import axios from "axios";
@@ -57,13 +56,17 @@ export default function Header() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Definir a variável global para a URL da API usando variável de ambiente
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
   const fetchUserProfile = useCallback(async () => {
     try {
       const token = getToken();
       if (!token)
         throw new Error("Token não encontrado. Faça login novamente.");
 
-      const response = await axios.get("http://localhost:5000/api/users/me", {
+      // Usar BASE_URL para a requisição axios
+      const response = await axios.get(`${BASE_URL}/api/users/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setUser(response.data);
@@ -84,12 +87,12 @@ export default function Header() {
     } finally {
       setIsLoadingUser(false);
     }
-  }, [router]); // Adicionamos router como dependência
+  }, [router]);
 
   useEffect(() => {
     if (isAuthLoading || !authUser) return;
     fetchUserProfile();
-  }, [isAuthLoading, authUser, fetchUserProfile]); // Adicionamos fetchUserProfile como dependência
+  }, [isAuthLoading, authUser, fetchUserProfile]);
 
   const handleLogout = () => {
     setIsLoggingOut(true);
@@ -130,6 +133,7 @@ export default function Header() {
             variant="ghost"
             onClick={handleLogout}
             className="text-white hover:bg-indigo-700"
+            aria-label="Sair do sistema"
           >
             <LogOut className="w-4 h-4 mr-2" />
             Sair
@@ -169,6 +173,7 @@ export default function Header() {
                       className:
                         "text-white hover:bg-indigo-700 hover:text-white",
                     })}
+                    aria-label="Buscar eventos"
                   >
                     <Search className="w-4 h-4 mr-2" />
                     Buscar Eventos
@@ -180,6 +185,7 @@ export default function Header() {
                       className:
                         "text-white hover:bg-indigo-700 hover:text-white",
                     })}
+                    aria-label="Ver meus eventos"
                   >
                     <Calendar className="w-4 h-4 mr-2" />
                     Meus Eventos
@@ -195,6 +201,7 @@ export default function Header() {
                       className:
                         "text-white hover:bg-indigo-700 hover:text-white",
                     })}
+                    aria-label="Cadastrar novo usuário"
                   >
                     <PlusCircle className="w-4 h-4 mr-2" />
                     Cadastrar Usuário
@@ -206,6 +213,7 @@ export default function Header() {
                       className:
                         "text-white hover:bg-indigo-700 hover:text-white",
                     })}
+                    aria-label="Cadastrar novo evento"
                   >
                     <PlusCircle className="w-4 h-4 mr-2" />
                     Cadastrar Evento
@@ -217,6 +225,7 @@ export default function Header() {
                       className:
                         "text-white hover:bg-indigo-700 hover:text-white",
                     })}
+                    aria-label="Buscar usuários e eventos"
                   >
                     <Search className="w-4 h-4 mr-2" />
                     Buscar
@@ -228,6 +237,7 @@ export default function Header() {
                       className:
                         "text-white hover:bg-indigo-700 hover:text-white",
                     })}
+                    aria-label="Gerar relatórios"
                   >
                     <FileText className="w-4 h-4 mr-2" />
                     Relatórios
@@ -255,7 +265,10 @@ export default function Header() {
               ) : (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <div className="flex items-center gap-2 cursor-pointer">
+                    <div
+                      className="flex items-center gap-2 cursor-pointer"
+                      aria-label="Abrir menu do usuário"
+                    >
                       <Avatar className="h-8 w-8">
                         <AvatarImage
                           src={profilePictureUrl}
@@ -311,6 +324,7 @@ export default function Header() {
                 variant: "ghost",
                 className: "text-white hover:bg-indigo-700 hover:text-white",
               })}
+              aria-label="Fazer login no sistema"
             >
               <User className="w-4 h-4 mr-2" />
               Login
@@ -324,6 +338,7 @@ export default function Header() {
               <Button
                 variant="ghost"
                 className="text-white hover:bg-indigo-700"
+                aria-label="Abrir menu de navegação"
               >
                 <Menu className="w-6 h-6" />
               </Button>
@@ -371,6 +386,9 @@ export default function Header() {
                     <Link
                       href="/notifications"
                       className="flex items-center gap-2 text-white hover:bg-indigo-700 p-2 rounded"
+                      aria-label={`Notificações${
+                        unreadCount > 0 ? `, ${unreadCount} não lidas` : ""
+                      }`}
                     >
                       <Bell className="w-5 h-5" />
                       Notificações
@@ -384,6 +402,7 @@ export default function Header() {
                     <Link
                       href="/profile"
                       className="flex items-center gap-2 text-white hover:bg-indigo-700 p-2 rounded"
+                      aria-label="Ver meu perfil"
                     >
                       <User className="w-5 h-5" />
                       Meu Perfil
@@ -394,6 +413,7 @@ export default function Header() {
                         <Link
                           href="/profile/edit"
                           className="flex items-center gap-2 text-white hover:bg-indigo-700 p-2 rounded"
+                          aria-label="Editar meu perfil"
                         >
                           <User className="w-5 h-5" />
                           Editar Perfil
@@ -401,6 +421,7 @@ export default function Header() {
                         <Link
                           href="/my-events"
                           className="flex items-center gap-2 text-white hover:bg-indigo-700 p-2 rounded"
+                          aria-label="Ver meus eventos"
                         >
                           <Calendar className="w-5 h-5" />
                           Meus Eventos
@@ -408,6 +429,7 @@ export default function Header() {
                         <Link
                           href="/search"
                           className="flex items-center gap-2 text-white hover:bg-indigo-700 p-2 rounded"
+                          aria-label="Buscar eventos"
                         >
                           <Search className="w-5 h-5" />
                           Buscar Eventos
@@ -420,6 +442,7 @@ export default function Header() {
                         <Link
                           href="/users/new"
                           className="flex items-center gap-2 text-white hover:bg-indigo-700 p-2 rounded"
+                          aria-label="Cadastrar novo usuário"
                         >
                           <PlusCircle className="w-5 h-5" />
                           Cadastrar Usuário
@@ -427,6 +450,7 @@ export default function Header() {
                         <Link
                           href="/events/new"
                           className="flex items-center gap-2 text-white hover:bg-indigo-700 p-2 rounded"
+                          aria-label="Cadastrar novo evento"
                         >
                           <PlusCircle className="w-5 h-5" />
                           Cadastrar Evento
@@ -434,6 +458,7 @@ export default function Header() {
                         <Link
                           href="/search"
                           className="flex items-center gap-2 text-white hover:bg-indigo-700 p-2 rounded"
+                          aria-label="Buscar usuários e eventos"
                         >
                           <Search className="w-5 h-5" />
                           Buscar
@@ -441,6 +466,7 @@ export default function Header() {
                         <Link
                           href="/reports"
                           className="flex items-center gap-2 text-white hover:bg-indigo-700 p-2 rounded"
+                          aria-label="Gerar relatórios"
                         >
                           <FileText className="w-5 h-5" />
                           Relatórios
@@ -452,6 +478,7 @@ export default function Header() {
                       onClick={handleLogout}
                       disabled={isLoggingOut}
                       className="flex items-center gap-2 text-red-400 hover:bg-indigo-700 p-2 rounded"
+                      aria-label="Sair do sistema"
                     >
                       <LogOut className="w-5 h-5" />
                       {isLoggingOut ? "Saindo..." : "Sair"}
@@ -461,6 +488,7 @@ export default function Header() {
                   <Link
                     href="/login"
                     className="flex items-center gap-2 text-white hover:bg-indigo-700 p-2 rounded"
+                    aria-label="Fazer login no sistema"
                   >
                     <User className="w-5 h-5" />
                     Login
