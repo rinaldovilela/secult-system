@@ -91,7 +91,7 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
       newSocket.off("connect_error");
       newSocket.disconnect();
     };
-  }, [user]);
+  }, [user, BASE_URL]); // Added BASE_URL to dependencies
 
   // Carregar notificações iniciais do backend
   useEffect(() => {
@@ -129,7 +129,7 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
     };
 
     fetchNotifications();
-  }, [user, socket]);
+  }, [user, socket, BASE_URL]); // Added BASE_URL to dependencies
 
   const addNotification = (notification: Notification) => {
     setNotifications((prev) => [notification, ...prev]);
