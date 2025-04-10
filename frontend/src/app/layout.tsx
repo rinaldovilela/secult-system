@@ -4,13 +4,13 @@ import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import Header from "@/components/layout/Header";
 import { SocketProvider } from "@/lib/SocketContext";
+import { Providers } from "./providers";
 
-// Configuração otimizada da fonte para export estático
 const inter = Inter({
   subsets: ["latin"],
-  display: "swap", // Melhora o desempenho de carregamento
-  adjustFontFallback: false, // Resolve o problema com assetPrefix
-  variable: "--font-inter", // Opcional: para usar como variável CSS
+  display: "swap",
+  adjustFontFallback: false,
+  variable: "--font-inter",
 });
 
 export const metadata = {
@@ -24,15 +24,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR" className="h-full">
-      <body
-        className={`${inter.className} h-full bg-neutral-100 flex flex-col`}
-      >
-        <SocketProvider>
-          <Header />
-          <main className="flex-1">{children}</main>
-          <Toaster position="top-right" />
-        </SocketProvider>
+    <html lang="pt-BR" className="h-full" suppressHydrationWarning>
+      <body className={`${inter.className} h-full bg-background flex flex-col`}>
+        <Providers>
+          <SocketProvider>
+            <Header />
+            <main className="flex-1">{children}</main>
+            <Toaster position="top-right" />
+          </SocketProvider>
+        </Providers>
       </body>
     </html>
   );

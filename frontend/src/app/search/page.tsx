@@ -218,7 +218,7 @@ export default function Search() {
           </h1>
           <Button
             variant="outline"
-            onClick={() => router.push("/dashboard")}
+            onClick={() => router.push("/")}
             className="flex items-center gap-2"
             aria-label="Voltar para o dashboard"
           >
