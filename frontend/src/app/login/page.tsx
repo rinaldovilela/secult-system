@@ -1,3 +1,4 @@
+// app/login/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -7,7 +8,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import axios from "axios";
-import toast from "react-hot-toast";
+import { toast } from "@/components/ui/use-toast";
 import {
   Form,
   FormControl,
@@ -18,9 +19,11 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import Loading from "@/components/ui/loading";
-import { Mail, Lock } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import Link from "next/link";
+import { Mail, Lock, Loader2 } from "lucide-react";
 
+// Schema de validação do formulário
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(1, "Senha é obrigatória"),
@@ -28,22 +31,15 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
+// Definir a variável global para a URL da API usando variável de ambiente
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
 export default function Login() {
   const router = useRouter();
   const { user, isAuthLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Definir a variável global para a URL da API usando variável de ambiente
-  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-
-  useEffect(() => {
-    if (isAuthLoading) return;
-
-    if (user) {
-      router.push("/");
-    }
-  }, [user, isAuthLoading, router]);
-
+  // Configuração do formulário com react-hook-form e zod
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -52,6 +48,20 @@ export default function Login() {
     },
   });
 
+  // Redirecionar se o usuário já estiver autenticado
+  useEffect(() => {
+    if (isAuthLoading) return;
+
+    if (user) {
+      toast({
+        title: "Você já está autenticado",
+        description: "Redirecionando para a página inicial...",
+      });
+      router.push("/");
+    }
+  }, [user, isAuthLoading, router]);
+
+  // Função de envio do formulário
   const onSubmit = async (data: LoginForm) => {
     setIsSubmitting(true);
     try {
@@ -59,39 +69,94 @@ export default function Login() {
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
       window.dispatchEvent(new Event("storage"));
-      toast.success("Login realizado com sucesso!");
+      toast({
+        title: "Sucesso",
+        description: "Login realizado com sucesso!",
+      });
       router.push("/");
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const errorMessage =
           error.response?.data?.error || error.message || "Erro desconhecido";
-        toast.error(`Erro ao fazer login: ${errorMessage}`);
+        toast({
+          title: "Erro ao fazer login",
+          description: errorMessage,
+          variant: "destructive",
+        });
       } else {
-        toast.error(`Erro ao fazer login: ${String(error)}`);
+        toast({
+          title: "Erro ao fazer login",
+          description: String(error),
+          variant: "destructive",
+        });
       }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (isAuthLoading) return <Loading />;
+  // Exibir esqueleto de carregamento enquanto verifica autenticação
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-6">
+          <div className="flex justify-center">
+            <Skeleton className="h-12 w-12 rounded-full bg-muted-foreground/20" />
+          </div>
+          <Skeleton className="h-10 w-3/4 mx-auto bg-muted-foreground/20" />
+          <div className="bg-muted shadow-lg rounded-lg p-6 sm:p-8 space-y-6">
+            <Skeleton className="h-6 w-1/2 bg-muted-foreground/20" />
+            <Skeleton className="h-10 w-full bg-muted-foreground/20" />
+            <Skeleton className="h-6 w-1/2 bg-muted-foreground/20" />
+            <Skeleton className="h-10 w-full bg-muted-foreground/20" />
+            <div className="flex gap-4">
+              <Skeleton className="h-10 w-full bg-muted-foreground/20" />
+              <Skeleton className="h-10 w-full bg-muted-foreground/20" />
+            </div>
+            <div className="flex justify-between">
+              <Skeleton className="h-4 w-1/3 bg-muted-foreground/20" />
+              <Skeleton className="h-4 w-1/3 bg-muted-foreground/20" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (user) return null;
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-6 sm:p-8">
-        <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900 text-center">
-          Login
+    <div className="min-h-screen bg-background flex items-center justify-center py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full bg-muted shadow-lg rounded-lg p-6 sm:p-8 animate-in fade-in duration-500">
+        <div className="flex justify-center mb-6">
+          <svg
+            className="w-12 h-12 text-primary"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+          >
+            <path
+              d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5"
+              strokeWidth="2"
+            />
+          </svg>
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-bold mb-8 text-foreground text-center">
+          Acesse o Secult System
         </h1>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="space-y-5"
+            aria-label="Formulário de login"
+          >
             <FormField
               control={form.control}
               name="email"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-2">
-                    <Mail className="w-5 h-5 text-indigo-600" />
+                <FormItem className="animate-in fade-in duration-500">
+                  <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                    <Mail className="w-5 h-5 text-primary" />
                     Email
                   </FormLabel>
                   <FormControl>
@@ -100,10 +165,11 @@ export default function Login() {
                       placeholder="Digite seu email"
                       {...field}
                       disabled={isSubmitting}
-                      className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                      className="w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                      aria-describedby="email-error"
                     />
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage id="email-error" />
                 </FormItem>
               )}
             />
@@ -111,9 +177,12 @@ export default function Login() {
               control={form.control}
               name="password"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-2">
-                    <Lock className="w-5 h-5 text-indigo-600" />
+                <FormItem
+                  className="animate-in fade-in duration-500"
+                  style={{ animationDelay: "100ms" }}
+                >
+                  <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                    <Lock className="w-5 h-5 text-primary" />
                     Senha
                   </FormLabel>
                   <FormControl>
@@ -122,30 +191,60 @@ export default function Login() {
                       placeholder="Digite sua senha"
                       {...field}
                       disabled={isSubmitting}
-                      className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                      className="w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                      aria-describedby="password-error"
                     />
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage id="password-error" />
                 </FormItem>
               )}
             />
-            <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex justify-between items-center text-sm">
+              <Link
+                href="/forgot-password"
+                className="text-primary hover:underline hover:text-primary/80 transition-all duration-200"
+                aria-label="Esqueceu sua senha?"
+              >
+                Esqueceu sua senha?
+              </Link>
+              <Link
+                href="/users/register"
+                className="text-primary hover:underline hover:text-primary/80 transition-all duration-200"
+                aria-label="Registrar-se no sistema"
+              >
+                Não tem uma conta? Registre-se
+              </Link>
+            </div>
+            <div
+              className="flex flex-col sm:flex-row gap-4 animate-in fade-in duration-500"
+              style={{ animationDelay: "200ms" }}
+            >
               <Button
                 type="submit"
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
+                className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground shadow-md transition-all duration-300 active:scale-95"
                 disabled={isSubmitting}
+                aria-label="Entrar no sistema"
               >
-                {isSubmitting ? "Entrando..." : "Entrar"}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Entrando...
+                  </>
+                ) : (
+                  "Entrar"
+                )}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => router.push("/")}
-                className="w-full border-gray-300 text-gray-700 hover:bg-gray-100"
-                disabled={isSubmitting}
-              >
-                Cancelar
-              </Button>
+              <Link href="/" className="w-full">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full border-muted-foreground/20 text-muted-foreground hover:bg-muted/20 shadow-sm transition-all duration-300 active:scale-95"
+                  disabled={isSubmitting}
+                  aria-label="Cancelar e voltar para a página inicial"
+                >
+                  Cancelar
+                </Button>
+              </Link>
             </div>
           </form>
         </Form>

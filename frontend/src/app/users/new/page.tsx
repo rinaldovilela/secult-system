@@ -1,3 +1,4 @@
+// app/users/new/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -19,6 +20,9 @@ import {
   FileText,
   Video,
   ArrowLeft,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +44,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import Loading from "@/components/ui/loading";
 import { getToken } from "@/lib/auth";
 import { z } from "zod";
 
@@ -58,10 +61,20 @@ const newUserSchema = z.object({
   role: z.enum(["artist", "group"], {
     message: "Selecione o tipo (Artista ou Grupo Cultural)",
   }),
-  cpfCnpj: z.string().refine((value) => {
-    const cleanValue = value.replace(/\D/g, "");
-    return cleanValue.length === 11 || cleanValue.length === 14;
-  }, "CPF ou CNPJ inválido"),
+  documentType: z.enum(["cpf", "cnpj"], {
+    message: "Selecione o tipo de documento (CPF ou CNPJ)",
+  }),
+  cpfCnpj: z.string().refine(
+    (value: string) => {
+      const cleanValue = value.replace(/\D/g, "");
+      const isCpf = cleanValue.length === 11;
+      const isCnpj = cleanValue.length === 14;
+      return isCpf || isCnpj;
+    },
+    {
+      message: "CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos",
+    }
+  ),
   bio: z.string().optional(),
   areaOfExpertise: z.string().optional(),
   birthDate: z.string().optional(),
@@ -74,7 +87,6 @@ const newUserSchema = z.object({
       }, "CEP deve ter 8 dígitos")
       .refine(
         (value) => {
-          // Aceita tanto o formato 00000000 quanto 00000-000
           return /^\d{5}-?\d{3}$/.test(value);
         },
         {
@@ -155,6 +167,7 @@ export default function NewUser() {
       email: "",
       password: "",
       role: "artist",
+      documentType: "cpf",
       cpfCnpj: "",
       bio: "",
       areaOfExpertise: "",
@@ -182,7 +195,7 @@ export default function NewUser() {
     },
   });
 
-  const role = form.watch("role");
+  const documentType = form.watch("documentType");
 
   const fetchAddressByCep = async (cep: string) => {
     const cleanCep = cep.replace(/\D/g, "");
@@ -222,7 +235,7 @@ export default function NewUser() {
 
       setCepStatus("success");
       toast({
-        title: "✅ Endereço preenchido com sucesso!",
+        title: "Endereço preenchido com sucesso!",
         description: "Verifique os dados e ajuste se necessário.",
       });
     } catch (error) {
@@ -277,7 +290,7 @@ export default function NewUser() {
       const token = getToken();
       if (!token) {
         toast({
-          title: "❌ Token não encontrado",
+          title: "Token não encontrado",
           description: "Faça login novamente.",
           variant: "destructive",
         });
@@ -305,7 +318,7 @@ export default function NewUser() {
         );
       }
 
-      // Endereço - agora como objeto JSON
+      // Endereço
       const address = {
         cep: values.address.cep.replace(/\D/g, ""),
         logradouro: values.address.logradouro,
@@ -336,7 +349,6 @@ export default function NewUser() {
       if (values.relatedFiles)
         formDataToSend.append("related_files", values.relatedFiles);
 
-      // Usar BASE_URL para a requisição axios
       await axios.post(`${BASE_URL}/api/users/register`, formDataToSend, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -345,7 +357,7 @@ export default function NewUser() {
       });
 
       toast({
-        title: "✅ Usuário cadastrado com sucesso!",
+        title: "Usuário cadastrado com sucesso!",
         description: "Redirecionando para a página de busca...",
       });
       router.push("/search");
@@ -356,7 +368,7 @@ export default function NewUser() {
         ? error.message
         : "Ocorreu um erro inesperado";
       toast({
-        title: "❌ Erro ao cadastrar usuário",
+        title: "Erro ao cadastrar usuário",
         description: errorMessage,
         variant: "destructive",
       });
@@ -365,24 +377,76 @@ export default function NewUser() {
     }
   };
 
-  if (isAuthLoading) return <Loading />;
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl w-full space-y-6">
+          <div className="flex justify-center">
+            <div className="animate-pulse h-12 w-12 rounded-full bg-muted-foreground/20"></div>
+          </div>
+          <div className="bg-muted shadow-lg rounded-lg p-6 sm:p-8 space-y-6">
+            <div className="flex justify-between items-center">
+              <div className="h-8 w-1/2 bg-muted-foreground/20 rounded"></div>
+              <div className="h-10 w-24 bg-muted-foreground/20 rounded"></div>
+            </div>
+            <div className="space-y-4">
+              <div className="h-6 w-1/4 bg-muted-foreground/20 rounded"></div>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-10 w-full bg-muted-foreground/20 rounded"
+                ></div>
+              ))}
+            </div>
+            <div className="space-y-4">
+              <div className="h-6 w-1/4 bg-muted-foreground/20 rounded"></div>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-10 w-full bg-muted-foreground/20 rounded"
+                ></div>
+              ))}
+            </div>
+            <div className="flex gap-4">
+              <div className="h-10 w-full bg-muted-foreground/20 rounded"></div>
+              <div className="h-10 w-full bg-muted-foreground/20 rounded"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!user || !["admin", "secretary"].includes(user.role)) {
     router.push("/login");
     return null;
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto">
-        <div className="bg-white shadow-lg rounded-lg p-6 sm:p-8">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+    <div className="min-h-screen bg-background py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto animate-in fade-in duration-500">
+        <div className="bg-muted shadow-lg rounded-lg p-6 sm:p-8">
+          <div className="flex justify-center mb-6">
+            <svg
+              className="w-12 h-12 text-primary"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+            >
+              <path
+                d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5"
+                strokeWidth="2"
+              />
+            </svg>
+          </div>
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
               Cadastrar Artista ou Grupo Cultural
             </h1>
             <Button
               variant="outline"
               onClick={() => router.push("/search")}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 border-muted-foreground/20 text-muted-foreground hover:bg-muted/20 shadow-sm transition-all duration-300 active:scale-95"
               aria-label="Voltar para a página de busca"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -390,18 +454,24 @@ export default function NewUser() {
             </Button>
           </div>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="space-y-5"
+              aria-label="Formulário de cadastro de artista ou grupo cultural"
+            >
               {/* Dados Pessoais */}
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold">Dados Pessoais</h2>
+              <div className="bg-muted/50 p-6 rounded-lg space-y-4 animate-in fade-in duration-500">
+                <h2 className="text-xl font-semibold text-foreground">
+                  Dados Pessoais
+                </h2>
 
                 <FormField
                   control={form.control}
                   name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <User className="w-5 h-5 text-indigo-600" />
+                      <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                        <User className="w-5 h-5 text-primary" />
                         Nome Completo *
                       </FormLabel>
                       <FormControl>
@@ -409,10 +479,11 @@ export default function NewUser() {
                           placeholder="Nome completo"
                           {...field}
                           disabled={isSubmitting}
-                          aria-label="Nome completo do usuário"
+                          className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                          aria-describedby="name-error"
                         />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage id="name-error" />
                     </FormItem>
                   )}
                 />
@@ -422,8 +493,8 @@ export default function NewUser() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <Mail className="w-5 h-5 text-indigo-600" />
+                      <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                        <Mail className="w-5 h-5 text-primary" />
                         Email *
                       </FormLabel>
                       <FormControl>
@@ -432,10 +503,11 @@ export default function NewUser() {
                           placeholder="seu@email.com"
                           {...field}
                           disabled={isSubmitting}
-                          aria-label="Email do usuário"
+                          className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                          aria-describedby="email-error"
                         />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage id="email-error" />
                     </FormItem>
                   )}
                 />
@@ -445,8 +517,8 @@ export default function NewUser() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <Lock className="w-5 h-5 text-indigo-600" />
+                      <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                        <Lock className="w-5 h-5 text-primary" />
                         Senha *
                       </FormLabel>
                       <FormControl>
@@ -455,10 +527,11 @@ export default function NewUser() {
                           placeholder="Digite sua senha"
                           {...field}
                           disabled={isSubmitting}
-                          aria-label="Senha do usuário"
+                          className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                          aria-describedby="password-error"
                         />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage id="password-error" />
                     </FormItem>
                   )}
                 />
@@ -468,8 +541,8 @@ export default function NewUser() {
                   name="role"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <User className="w-5 h-5 text-indigo-600" />
+                      <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                        <User className="w-5 h-5 text-primary" />
                         Tipo de Cadastro *
                       </FormLabel>
                       <Select
@@ -478,7 +551,10 @@ export default function NewUser() {
                         disabled={isSubmitting}
                       >
                         <FormControl>
-                          <SelectTrigger aria-label="Selecione o tipo de cadastro">
+                          <SelectTrigger
+                            className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                            aria-label="Selecione o tipo de cadastro"
+                          >
                             <SelectValue placeholder="Selecione o tipo" />
                           </SelectTrigger>
                         </FormControl>
@@ -489,53 +565,84 @@ export default function NewUser() {
                           <SelectItem value="group">Grupo Cultural</SelectItem>
                         </SelectContent>
                       </Select>
-                      <FormMessage />
+                      <FormMessage id="role-error" />
                     </FormItem>
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="cpfCnpj"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        {role === "artist" ? "CPF *" : "CNPJ *"}
-                      </FormLabel>
-                      <FormControl>
-                        <MaskedInput
-                          mask={
-                            role === "artist"
-                              ? "000.000.000-00"
-                              : "00.000.000/0000-00"
-                          }
-                          placeholder={
-                            role === "artist"
-                              ? "000.000.000-00"
-                              : "00.000.000/0000-00"
-                          }
-                          {...field}
-                          onAccept={(value: string) => field.onChange(value)}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="documentType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                          <FileText className="w-5 h-5 text-primary" />
+                          Tipo de Documento *
+                        </FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
                           disabled={isSubmitting}
-                          aria-label={
-                            role === "artist"
-                              ? "CPF do artista"
-                              : "CNPJ do grupo cultural"
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                        >
+                          <FormControl>
+                            <SelectTrigger
+                              className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                              aria-label="Selecione o tipo de documento"
+                            >
+                              <SelectValue placeholder="Selecione" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="cpf">CPF</SelectItem>
+                            <SelectItem value="cnpj">CNPJ</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage id="documentType-error" />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="cpfCnpj"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                          {documentType === "cpf" ? "CPF *" : "CNPJ *"}
+                        </FormLabel>
+                        <FormControl>
+                          <MaskedInput
+                            mask={
+                              documentType === "cpf"
+                                ? "000.000.000-00"
+                                : "00.000.000/0000-00"
+                            }
+                            placeholder={
+                              documentType === "cpf"
+                                ? "000.000.000-00"
+                                : "00.000.000/0000-00"
+                            }
+                            {...field}
+                            onAccept={(value: string) => field.onChange(value)}
+                            disabled={isSubmitting}
+                            className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                            aria-describedby="cpfCnpj-error"
+                          />
+                        </FormControl>
+                        <FormMessage id="cpfCnpj-error" />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 <FormField
                   control={form.control}
                   name="birthDate"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <Calendar className="w-5 h-5 text-indigo-600" />
+                      <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                        <Calendar className="w-5 h-5 text-primary" />
                         Data de Nascimento
                       </FormLabel>
                       <FormControl>
@@ -545,11 +652,11 @@ export default function NewUser() {
                           {...field}
                           onAccept={(value: string) => field.onChange(value)}
                           disabled={isSubmitting}
-                          className="pl-10"
-                          aria-label="Data de nascimento"
+                          className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                          aria-describedby="birthDate-error"
                         />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage id="birthDate-error" />
                     </FormItem>
                   )}
                 />
@@ -559,7 +666,9 @@ export default function NewUser() {
                   name="bio"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Biografia</FormLabel>
+                      <FormLabel className="text-muted-foreground">
+                        Biografia
+                      </FormLabel>
                       <FormControl>
                         <Textarea
                           rows={3}
@@ -567,13 +676,14 @@ export default function NewUser() {
                           {...field}
                           value={field.value || ""}
                           disabled={isSubmitting}
-                          aria-label="Biografia do artista ou grupo"
+                          className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                          aria-describedby="bio-error"
                         />
                       </FormControl>
                       <FormDescription>
                         Opcional - A biografia será exibida no perfil público.
                       </FormDescription>
-                      <FormMessage />
+                      <FormMessage id="bio-error" />
                     </FormItem>
                   )}
                 />
@@ -583,33 +693,41 @@ export default function NewUser() {
                   name="areaOfExpertise"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Área de Atuação</FormLabel>
+                      <FormLabel className="text-muted-foreground">
+                        Área de Atuação
+                      </FormLabel>
                       <FormControl>
                         <Input
                           placeholder="Ex: Música, Teatro, Dança"
                           {...field}
                           value={field.value || ""}
                           disabled={isSubmitting}
-                          aria-label="Área de atuação"
+                          className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                          aria-describedby="areaOfExpertise-error"
                         />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage id="areaOfExpertise-error" />
                     </FormItem>
                   )}
                 />
               </div>
 
               {/* Endereço */}
-              <div className="bg-gray-50 p-6 rounded-lg space-y-4">
-                <h2 className="text-xl font-semibold">Endereço</h2>
+              <div
+                className="bg-muted/50 p-6 rounded-lg space-y-4 animate-in fade-in duration-500"
+                style={{ animationDelay: "100ms" }}
+              >
+                <h2 className="text-xl font-semibold text-foreground">
+                  Endereço
+                </h2>
 
                 <FormField
                   control={form.control}
                   name="address.cep"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <MapPin className="w-5 h-5 text-indigo-600" />
+                      <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                        <MapPin className="w-5 h-5 text-primary" />
                         CEP *
                       </FormLabel>
                       <FormControl>
@@ -629,26 +747,37 @@ export default function NewUser() {
                           }}
                           onBlur={() => form.trigger("address.cep")}
                           disabled={isLoadingCep || isSubmitting}
-                          className="pl-10"
-                          aria-label="CEP do endereço"
+                          className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                          aria-describedby="cep-error"
                         />
                       </FormControl>
-                      <div className="text-sm mt-1">
+                      <div className="text-sm mt-1 flex items-center gap-2">
                         {cepStatus === "loading" && (
-                          <p className="text-gray-500">Buscando endereço...</p>
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                            <p className="text-muted-foreground">
+                              Buscando endereço...
+                            </p>
+                          </>
                         )}
                         {cepStatus === "success" && (
-                          <p className="text-green-600">
-                            Endereço preenchido com sucesso!
-                          </p>
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-primary" />
+                            <p className="text-primary">
+                              Endereço preenchido com sucesso!
+                            </p>
+                          </>
                         )}
                         {cepStatus === "error" && (
-                          <p className="text-red-600">
-                            Não foi possível buscar o endereço.
-                          </p>
+                          <>
+                            <AlertCircle className="w-4 h-4 text-destructive" />
+                            <p className="text-destructive">
+                              Não foi possível buscar o endereço.
+                            </p>
+                          </>
                         )}
                       </div>
-                      <FormMessage />
+                      <FormMessage id="cep-error" />
                     </FormItem>
                   )}
                 />
@@ -659,15 +788,18 @@ export default function NewUser() {
                     name="address.logradouro"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Logradouro *</FormLabel>
+                        <FormLabel className="text-muted-foreground">
+                          Logradouro *
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
                             disabled={isSubmitting}
-                            aria-label="Logradouro do endereço"
+                            className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                            aria-describedby="logradouro-error"
                           />
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage id="logradouro-error" />
                       </FormItem>
                     )}
                   />
@@ -677,15 +809,18 @@ export default function NewUser() {
                     name="address.numero"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Número *</FormLabel>
+                        <FormLabel className="text-muted-foreground">
+                          Número *
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
                             disabled={isSubmitting}
-                            aria-label="Número do endereço"
+                            className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                            aria-describedby="numero-error"
                           />
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage id="numero-error" />
                       </FormItem>
                     )}
                   />
@@ -696,16 +831,19 @@ export default function NewUser() {
                   name="address.complemento"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Complemento</FormLabel>
+                      <FormLabel className="text-muted-foreground">
+                        Complemento
+                      </FormLabel>
                       <FormControl>
                         <Input
                           {...field}
                           value={field.value || ""}
                           disabled={isSubmitting}
-                          aria-label="Complemento do endereço"
+                          className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                          aria-describedby="complemento-error"
                         />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage id="complemento-error" />
                     </FormItem>
                   )}
                 />
@@ -716,15 +854,18 @@ export default function NewUser() {
                     name="address.bairro"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Bairro *</FormLabel>
+                        <FormLabel className="text-muted-foreground">
+                          Bairro *
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
                             disabled={isSubmitting}
-                            aria-label="Bairro do endereço"
+                            className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                            aria-describedby="bairro-error"
                           />
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage id="bairro-error" />
                       </FormItem>
                     )}
                   />
@@ -734,15 +875,18 @@ export default function NewUser() {
                     name="address.cidade"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Cidade *</FormLabel>
+                        <FormLabel className="text-muted-foreground">
+                          Cidade *
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
                             disabled={isSubmitting}
-                            aria-label="Cidade do endereço"
+                            className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                            aria-describedby="cidade-error"
                           />
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage id="cidade-error" />
                       </FormItem>
                     )}
                   />
@@ -753,14 +897,19 @@ export default function NewUser() {
                   name="address.estado"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Estado (UF) *</FormLabel>
+                      <FormLabel className="text-muted-foreground">
+                        Estado (UF) *
+                      </FormLabel>
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
                         disabled={isSubmitting}
                       >
                         <FormControl>
-                          <SelectTrigger aria-label="Selecione o estado">
+                          <SelectTrigger
+                            className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                            aria-label="Selecione o estado"
+                          >
                             <SelectValue placeholder="Selecione o estado" />
                           </SelectTrigger>
                         </FormControl>
@@ -772,34 +921,39 @@ export default function NewUser() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <FormMessage />
+                      <FormMessage id="estado-error" />
                     </FormItem>
                   )}
                 />
               </div>
 
               {/* Dados Bancários */}
-              <div className="bg-gray-50 p-6 rounded-lg space-y-4">
-                <h2 className="text-xl font-semibold">Dados Bancários</h2>
+              <div
+                className="bg-muted/50 p-6 rounded-lg space-y-4 animate-in fade-in duration-500"
+                style={{ animationDelay: "200ms" }}
+              >
+                <h2 className="text-xl font-semibold text-foreground">
+                  Dados Bancários
+                </h2>
 
                 <FormField
                   control={form.control}
                   name="bankDetails.bank_name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <CreditCard className="w-5 h-5 text-indigo-600" />
+                      <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                        <CreditCard className="w-5 h-5 text-primary" />
                         Nome do Banco *
                       </FormLabel>
                       <FormControl>
                         <Input
                           {...field}
                           disabled={isSubmitting}
-                          className="pl-10"
-                          aria-label="Nome do banco"
+                          className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                          aria-describedby="bank_name-error"
                         />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage id="bank_name-error" />
                     </FormItem>
                   )}
                 />
@@ -810,14 +964,19 @@ export default function NewUser() {
                     name="bankDetails.account_type"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Tipo de Conta *</FormLabel>
+                        <FormLabel className="text-muted-foreground">
+                          Tipo de Conta *
+                        </FormLabel>
                         <Select
                           onValueChange={field.onChange}
                           value={field.value}
                           disabled={isSubmitting}
                         >
                           <FormControl>
-                            <SelectTrigger aria-label="Selecione o tipo de conta">
+                            <SelectTrigger
+                              className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                              aria-label="Selecione o tipo de conta"
+                            >
                               <SelectValue placeholder="Selecione" />
                             </SelectTrigger>
                           </FormControl>
@@ -830,7 +989,7 @@ export default function NewUser() {
                             </SelectItem>
                           </SelectContent>
                         </Select>
-                        <FormMessage />
+                        <FormMessage id="account_type-error" />
                       </FormItem>
                     )}
                   />
@@ -840,15 +999,18 @@ export default function NewUser() {
                     name="bankDetails.agency"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Agência *</FormLabel>
+                        <FormLabel className="text-muted-foreground">
+                          Agência *
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
                             disabled={isSubmitting}
-                            aria-label="Número da agência"
+                            className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                            aria-describedby="agency-error"
                           />
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage id="agency-error" />
                       </FormItem>
                     )}
                   />
@@ -860,15 +1022,18 @@ export default function NewUser() {
                     name="bankDetails.account_number"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Número da Conta *</FormLabel>
+                        <FormLabel className="text-muted-foreground">
+                          Número da Conta *
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
                             disabled={isSubmitting}
-                            aria-label="Número da conta bancária"
+                            className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                            aria-describedby="account_number-error"
                           />
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage id="account_number-error" />
                       </FormItem>
                     )}
                   />
@@ -878,16 +1043,19 @@ export default function NewUser() {
                     name="bankDetails.pix_key"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Chave PIX</FormLabel>
+                        <FormLabel className="text-muted-foreground">
+                          Chave PIX
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
                             value={field.value || ""}
                             disabled={isSubmitting}
-                            aria-label="Chave PIX"
+                            className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                            aria-describedby="pix_key-error"
                           />
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage id="pix_key-error" />
                       </FormItem>
                     )}
                   />
@@ -895,16 +1063,21 @@ export default function NewUser() {
               </div>
 
               {/* Arquivos */}
-              <div className="bg-gray-50 p-6 rounded-lg space-y-4">
-                <h2 className="text-xl font-semibold">Mídias e Arquivos</h2>
+              <div
+                className="bg-muted/50 p-6 rounded-lg space-y-4 animate-in fade-in duration-500"
+                style={{ animationDelay: "300ms" }}
+              >
+                <h2 className="text-xl font-semibold text-foreground">
+                  Mídias e Arquivos
+                </h2>
 
                 <FormField
                   control={form.control}
                   name="profilePicture"
                   render={({}) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <ImageIcon className="w-5 h-5 text-indigo-600" />
+                      <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                        <ImageIcon className="w-5 h-5 text-primary" />
                         Foto de Perfil
                       </FormLabel>
                       <FormControl>
@@ -919,23 +1092,24 @@ export default function NewUser() {
                             )
                           }
                           disabled={isSubmitting}
-                          aria-label="Selecionar foto de perfil (formatos aceitos: JPEG, PNG, JPG, GIF)"
+                          className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                          aria-describedby="profilePicture-error"
                         />
                       </FormControl>
                       {profilePreview && (
-                        <div className="mt-2 h-32 w-32 relative">
+                        <div className="mt-2 h-40 w-40 relative rounded-full overflow-hidden shadow-sm">
                           <Image
                             src={profilePreview}
                             alt="Prévia da foto de perfil"
                             fill
-                            className="object-cover rounded"
+                            className="object-cover"
                           />
                         </div>
                       )}
                       <FormDescription>
                         Tamanho máximo: {MAX_FILE_SIZE / (1024 * 1024)}MB
                       </FormDescription>
-                      <FormMessage />
+                      <FormMessage id="profilePicture-error" />
                     </FormItem>
                   )}
                 />
@@ -945,8 +1119,8 @@ export default function NewUser() {
                   name="portfolio"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <FileText className="w-5 h-5 text-indigo-600" />
+                      <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                        <FileText className="w-5 h-5 text-primary" />
                         Portfólio (PDF)
                       </FormLabel>
                       <FormControl>
@@ -955,18 +1129,20 @@ export default function NewUser() {
                           accept="application/pdf"
                           onChange={(e) => handleFileChange("portfolio", e)}
                           disabled={isSubmitting}
-                          aria-label="Selecionar portfólio (formato aceito: PDF)"
+                          className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                          aria-describedby="portfolio-error"
                         />
                       </FormControl>
                       {field.value && (
-                        <p className="text-sm text-gray-500 mt-1">
-                          Arquivo selecionado: {field.value.name}
-                        </p>
+                        <div className="mt-2 p-2 bg-background rounded-md shadow-sm flex items-center gap-2 text-sm text-muted-foreground">
+                          <FileText className="w-4 h-4 text-primary" />
+                          <span>{field.value.name}</span>
+                        </div>
                       )}
                       <FormDescription>
                         Tamanho máximo: {MAX_FILE_SIZE / (1024 * 1024)}MB
                       </FormDescription>
-                      <FormMessage />
+                      <FormMessage id="portfolio-error" />
                     </FormItem>
                   )}
                 />
@@ -976,8 +1152,8 @@ export default function NewUser() {
                   name="video"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <Video className="w-5 h-5 text-indigo-600" />
+                      <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                        <Video className="w-5 h-5 text-primary" />
                         Vídeo
                       </FormLabel>
                       <FormControl>
@@ -986,18 +1162,20 @@ export default function NewUser() {
                           accept="video/mp4,video/webm,video/ogg"
                           onChange={(e) => handleFileChange("video", e)}
                           disabled={isSubmitting}
-                          aria-label="Selecionar vídeo (formatos aceitos: MP4, WebM, OGG)"
+                          className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                          aria-describedby="video-error"
                         />
                       </FormControl>
                       {field.value && (
-                        <p className="text-sm text-gray-500 mt-1">
-                          Arquivo selecionado: {field.value.name}
-                        </p>
+                        <div className="mt-2 p-2 bg-background rounded-md shadow-sm flex items-center gap-2 text-sm text-muted-foreground">
+                          <Video className="w-4 h-4 text-primary" />
+                          <span>{field.value.name}</span>
+                        </div>
                       )}
                       <FormDescription>
                         Tamanho máximo: {MAX_FILE_SIZE / (1024 * 1024)}MB
                       </FormDescription>
-                      <FormMessage />
+                      <FormMessage id="video-error" />
                     </FormItem>
                   )}
                 />
@@ -1007,8 +1185,8 @@ export default function NewUser() {
                   name="relatedFiles"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <FileText className="w-5 h-5 text-indigo-600" />
+                      <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                        <FileText className="w-5 h-5 text-primary" />
                         Arquivos Relacionados
                       </FormLabel>
                       <FormControl>
@@ -1016,36 +1194,50 @@ export default function NewUser() {
                           type="file"
                           onChange={(e) => handleFileChange("relatedFiles", e)}
                           disabled={isSubmitting}
-                          aria-label="Selecionar arquivos relacionados (qualquer formato)"
+                          className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                          aria-describedby="relatedFiles-error"
                         />
                       </FormControl>
                       {field.value && (
-                        <p className="text-sm text-gray-500 mt-1">
-                          Arquivo selecionado: {field.value.name}
-                        </p>
+                        <div className="mt-2 p-2 bg-background rounded-md shadow-sm flex items-center gap-2 text-sm text-muted-foreground">
+                          <FileText className="w-4 h-4 text-primary" />
+                          <span>{field.value.name}</span>
+                        </div>
                       )}
                       <FormDescription>
                         Tamanho máximo: {MAX_FILE_SIZE / (1024 * 1024)}MB
                       </FormDescription>
-                      <FormMessage />
+                      <FormMessage id="relatedFiles-error" />
                     </FormItem>
                   )}
                 />
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-4 pt-4">
+              <div
+                className="flex flex-col sm:flex-row gap-4 pt-4 animate-in fade-in duration-500"
+                style={{ animationDelay: "400ms" }}
+              >
                 <Button
                   type="submit"
                   disabled={isSubmitting}
+                  className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground shadow-md transition-all duration-300 active:scale-95"
                   aria-label="Cadastrar novo usuário"
                 >
-                  {isSubmitting ? "Cadastrando..." : "Cadastrar"}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Cadastrando...
+                    </>
+                  ) : (
+                    "Cadastrar"
+                  )}
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => router.push("/search")}
                   disabled={isSubmitting}
+                  className="w-full border-muted-foreground/20 text-muted-foreground hover:bg-muted/20 shadow-sm transition-all duration-300 active:scale-95"
                   aria-label="Cancelar cadastro"
                 >
                   Cancelar
