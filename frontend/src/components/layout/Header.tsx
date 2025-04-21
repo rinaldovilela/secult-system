@@ -318,7 +318,7 @@ export default function Header() {
                     aria-label="Cadastrar novo usuário"
                   >
                     <PlusCircle className="w-4 h-4 mr-2" />
-                    Cadastrar Usuário
+                    Cadastro
                   </Link>
                   <Link
                     href="/events/new"
@@ -615,7 +615,7 @@ export default function Header() {
                           aria-label="Cadastrar novo usuário"
                         >
                           <PlusCircle className="w-5 h-5 text-primary-foreground" />
-                          Cadastrar Usuário
+                          Cadastro
                         </Link>
                         <Link
                           href="/events/new"
