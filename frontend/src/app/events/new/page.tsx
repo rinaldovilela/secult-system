@@ -19,6 +19,7 @@ import Loading from "@/components/ui/loading";
 import { MaskedInput } from "@/components/MaskedInput";
 import {
   Calendar,
+  Clock,
   MapPin,
   Users,
   User,
@@ -36,7 +37,7 @@ import { getToken } from "@/lib/auth";
 interface Artist {
   id: string;
   name: string;
-  type: "artist" | "group"; // Adicionado para diferenciar artistas e grupos
+  type: "artist" | "group";
 }
 
 interface EventArtist {
@@ -86,7 +87,6 @@ const BRAZILIAN_STATES = [
   "TO",
 ];
 
-// Função para formatar valores como moeda brasileira
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -101,6 +101,7 @@ export default function NewEvent() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState("");
+  const [time, setTime] = useState("00:00"); // Novo estado para a hora, com valor padrão 00:00
   const [location, setLocation] = useState<LocationFields>({
     cep: "",
     logradouro: "",
@@ -211,7 +212,7 @@ export default function NewEvent() {
       {
         artist_id: selectedArtistId,
         artist_name: artist.name,
-        type: artist.type, // Adiciona o tipo do participante
+        type: artist.type,
         amount: parseFloat(artistAmount),
       },
     ]);
@@ -245,7 +246,10 @@ export default function NewEvent() {
         throw new Error("Token não encontrado. Faça login novamente.");
       }
 
-      const formattedDate = new Date(date).toISOString();
+      // Combinar data e hora em um único valor datetime
+      const dateTimeString = `${date}T${time}:00`;
+      const formattedDate = new Date(dateTimeString).toISOString();
+
       const locationString = [
         location.logradouro,
         location.numero,
@@ -356,16 +360,33 @@ export default function NewEvent() {
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Calendar className="w-5 h-5 text-primary" />
-                  Data *
+                  Data e Hora *
                 </label>
-                <Input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  required
-                  className="mt-1 w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
-                  aria-label="Data do evento"
-                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-1">
+                  <div>
+                    <Input
+                      type="date"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                      required
+                      className="w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                      aria-label="Data do evento"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-primary" />
+                      <Input
+                        type="time"
+                        value={time}
+                        onChange={(e) => setTime(e.target.value)}
+                        required
+                        className="w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                        aria-label="Hora do evento"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
               <div
                 className="bg-muted/50 p-6 rounded-lg shadow-sm animate-in fade-in duration-500"
@@ -529,11 +550,7 @@ export default function NewEvent() {
                         className="mt-1 w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
                         aria-label="Selecione o estado do local do evento"
                       >
-                        <SelectValue
-                          placeholder="Seичь
-
-lecione o estado"
-                        />
+                        <SelectValue placeholder="Selecione o estado" />
                       </SelectTrigger>
                       <SelectContent>
                         {BRAZILIAN_STATES.map((uf) => (
