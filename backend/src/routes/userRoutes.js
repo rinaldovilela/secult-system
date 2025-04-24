@@ -236,9 +236,11 @@ router.get("/artists", authenticateToken, async (req, res) => {
     }
     const [users] = await db.query(
       `
-      SELECT id, name, role
-      FROM users
-      WHERE role IN ('artist', 'group')
+      SELECT u.id, u.name, u.email, u.role,
+             agd.bio, agd.area_of_expertise, agd.birth_date
+      FROM users u
+      LEFT JOIN artist_group_details agd ON u.id = agd.user_id
+      WHERE u.role IN ('artist', 'group')
     `
     );
     res.status(200).json(users);
