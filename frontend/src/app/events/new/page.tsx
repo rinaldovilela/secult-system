@@ -182,7 +182,7 @@ export default function NewEvent() {
 
       setCepStatus("success");
       toast.success("Endereço preenchido com sucesso!");
-    } catch (error) {
+    } catch {
       setCepStatus("error");
       toast.error("Erro ao buscar CEP. Preencha os campos manualmente.");
     } finally {
