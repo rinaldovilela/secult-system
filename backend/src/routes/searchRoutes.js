@@ -5,6 +5,11 @@ const { authenticateToken } = require("../middleware/auth");
 
 router.get("/", authenticateToken, async (req, res) => {
   try {
+    console.log("Requisição recebida em /api/search:", {
+      query: req.query,
+      headers: req.headers,
+    });
+
     const {
       type,
       query,
@@ -13,6 +18,8 @@ router.get("/", authenticateToken, async (req, res) => {
       pendingPayments,
       page = 1,
       limit = 15,
+      sortBy,
+      sortDirection,
     } = req.query;
 
     // Converter page e limit para números e calcular o offset
@@ -25,6 +32,17 @@ router.get("/", authenticateToken, async (req, res) => {
 
     // Converter pendingPayments para booleano
     const filterPendingPayments = pendingPayments === "true";
+
+    // Definir a ordenação
+    let orderByClause = "";
+    if (sortBy) {
+      const sortColumn =
+        sortBy === "date" ? "e.date" : sortBy === "name" ? "u.name" : null;
+      const direction = sortDirection === "asc" ? "ASC" : "DESC";
+      if (sortColumn) {
+        orderByClause = ` ORDER BY ${sortColumn} ${direction}`;
+      }
+    }
 
     // Buscar eventos
     if (type === "all" || type === "events") {
@@ -39,7 +57,6 @@ router.get("/", authenticateToken, async (req, res) => {
       const queryParams = [];
       const countParams = [];
 
-      // Adicionar JOIN com event_artists se o filtro de pagamentos pendentes estiver ativo
       if (filterPendingPayments) {
         eventQuery += `
           INNER JOIN event_artists ea ON e.id = ea.event_id
@@ -54,19 +71,16 @@ router.get("/", authenticateToken, async (req, res) => {
         countQuery += " WHERE 1=1";
       }
 
-      // Filtrar por data a partir do dia atual se query estiver vazio
       if (!query) {
         eventQuery += " AND e.date >= CURDATE()";
         countQuery += " AND e.date >= CURDATE()";
       } else {
-        // Filtrar por título se query for fornecido
         eventQuery += " AND e.title LIKE ?";
         countQuery += " AND e.title LIKE ?";
         queryParams.push(`%${query}%`);
         countParams.push(`%${query}%`);
       }
 
-      // Filtrar por intervalo de datas, se fornecido
       if (startDate) {
         eventQuery += " AND e.date >= ?";
         countQuery += " AND e.date >= ?";
@@ -76,12 +90,13 @@ router.get("/", authenticateToken, async (req, res) => {
       if (endDate) {
         eventQuery += " AND e.date <= ?";
         countQuery += " AND e.date <= ?";
-        // Ajustar endDate para incluir o dia inteiro (23:59:59)
         queryParams.push(`${endDate} 23:59:59`);
         countParams.push(`${endDate} 23:59:59`);
       }
 
-      // Adicionar LIMIT e OFFSET para paginação
+      if (sortBy === "date") {
+        eventQuery += orderByClause;
+      }
       eventQuery += ` LIMIT ? OFFSET ?`;
       queryParams.push(limitNum, offset);
 
@@ -102,7 +117,7 @@ router.get("/", authenticateToken, async (req, res) => {
     if (type === "all" || type === "users") {
       let userQuery = `
         SELECT id, name, email, role
-        FROM users
+        FROM users u
         WHERE role IN ('artist', 'group')
       `;
       let userCountQuery = `
@@ -120,7 +135,9 @@ router.get("/", authenticateToken, async (req, res) => {
         userCountParams.push(`%${query}%`, `%${query}%`);
       }
 
-      // Adicionar LIMIT e OFFSET para paginação
+      if (sortBy === "name") {
+        userQuery += orderByClause;
+      }
       userQuery += ` LIMIT ? OFFSET ?`;
       userParams.push(limitNum, offset);
 
@@ -142,6 +159,7 @@ router.get("/", authenticateToken, async (req, res) => {
       );
     }
 
+    console.log("Resposta enviada:", { results, total });
     res.status(200).json({ results, total });
   } catch (error) {
     console.error("Erro ao buscar:", error);

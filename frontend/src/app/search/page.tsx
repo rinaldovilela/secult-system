@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import axios from "axios";
@@ -14,7 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import Loading from "@/components/ui/loading";
 import {
@@ -23,12 +22,12 @@ import {
   User,
   Users,
   ArrowLeft,
-  DollarSign,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { useDebounce } from "@/hooks/useDebounce";
+import { SearchFilters } from "@/components/SearchFilters";
 
 interface BaseResult {
   id: string;
@@ -62,8 +61,14 @@ export default function Search() {
   const [isLoading, setIsLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
-  const itemsPerPage = 15;
+  const [sortBy, setSortBy] = useState<"name" | "date" | "">("");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [cache, setCache] = useState<
+    Record<string, { results: SearchResult[]; total: number }>
+  >({});
+  const itemsPerPage = 10;
   const debouncedQuery = useDebounce(query, 500);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -81,9 +86,47 @@ export default function Search() {
     }
   }, [isAuthLoading, user, router]);
 
+  useEffect(() => {
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, []);
+
   const handleSearch = useCallback(async () => {
     setIsLoading(true);
     const controller = new AbortController();
+
+    // Validação de intervalo de datas
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      if (end < start) {
+        toast.error("A data final deve ser posterior à data inicial.");
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    // Criar chave de cache com base nos parâmetros
+    const cacheKey = JSON.stringify({
+      type: searchType,
+      query: debouncedQuery,
+      startDate,
+      endDate,
+      pendingPayments,
+      page: currentPage,
+      limit: itemsPerPage,
+      sortBy,
+      sortDirection,
+    });
+
+    // Verificar se o resultado está no cache
+    if (cache[cacheKey]) {
+      setResults(cache[cacheKey].results);
+      setTotalItems(cache[cacheKey].total);
+      setIsLoading(false);
+      return;
+    }
 
     try {
       const token = getToken();
@@ -93,42 +136,71 @@ export default function Search() {
         return;
       }
 
-      const params: Record<string, string | boolean | number> = {
-        type: searchType,
-        query: debouncedQuery,
-        page: currentPage,
-        limit: itemsPerPage,
-      };
-      if (searchType === "events" || searchType === "all") {
-        if (startDate) params.startDate = startDate;
-        if (endDate) params.endDate = endDate;
-        if (pendingPayments) params.pendingPayments = pendingPayments;
-      }
-
       const response = await axios.get<{
         results: SearchResult[];
         total: number;
       }>(`${BASE_URL}/api/search`, {
-        params,
+        params: {
+          type: searchType,
+          query: debouncedQuery,
+          startDate,
+          endDate,
+          pendingPayments,
+          page: currentPage,
+          limit: itemsPerPage,
+          sortBy,
+          sortDirection,
+        },
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
       });
 
-      // Remover duplicatas como camada extra de segurança
+      // Verificar se response.data existe e tem a estrutura esperada
+      if (!response.data || typeof response.data !== "object") {
+        throw new Error("Resposta inválida da API");
+      }
+
+      const { results = [], total = 0 } = response.data; // Valores padrão para evitar erros
+
       const uniqueResults = Array.from(
         new Map(
-          response.data.results.map((item) => [`${item.type}-${item.id}`, item])
+          results.map((item) => [`${item.type}-${item.id}`, item])
         ).values()
       );
 
+      // Armazenar no cache
+      setCache((prev) => ({
+        ...prev,
+        [cacheKey]: { results: uniqueResults, total },
+      }));
+
       setResults(uniqueResults);
-      setTotalItems(response.data.total);
+      setTotalItems(total);
     } catch (error) {
-      if (axios.isAxiosError(error) && error.name !== "CanceledError") {
+      if (axios.isAxiosError(error)) {
+        // Logar detalhes do erro para depuração
+        console.error("Erro na requisição à API:", {
+          status: error.response?.status,
+          data: error.response?.data,
+          message: error.message,
+        });
+
+        // Mostrar mensagem de erro para o usuário
+        const errorMessage =
+          error.response?.data?.error ||
+          error.message ||
+          "Erro ao buscar dados. Tente novamente.";
+        toast.error(`Erro na busca: ${errorMessage}`);
+
+        // Definir valores padrão para evitar falhas na UI
         setResults([]);
-        toast.error(
-          `Erro na busca: ${error.response?.data?.error || error.message}`
-        );
+        setTotalItems(0);
+      } else {
+        // Erro genérico (não relacionado ao axios)
+        console.error("Erro inesperado:", error);
+        toast.error("Erro inesperado. Tente novamente.");
+        setResults([]);
+        setTotalItems(0);
       }
     } finally {
       setIsLoading(false);
@@ -142,6 +214,8 @@ export default function Search() {
     endDate,
     pendingPayments,
     currentPage,
+    sortBy,
+    sortDirection,
     router,
     BASE_URL,
   ]);
@@ -155,6 +229,8 @@ export default function Search() {
     endDate,
     pendingPayments,
     currentPage,
+    sortBy,
+    sortDirection,
     handleSearch,
   ]);
 
@@ -291,6 +367,7 @@ export default function Search() {
                   Tipo de Busca
                 </label>
                 <Select
+                  defaultValue="all" // Garantir valor inicial
                   value={searchType}
                   onValueChange={(value: SearchType) => setSearchType(value)}
                 >
@@ -316,9 +393,10 @@ export default function Search() {
                   onKeyDown={handleKeyDown}
                   className="mt-1 w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
                   aria-label="Digite o termo de busca"
+                  ref={searchInputRef}
                 />
               </div>
-              <div className="flex items-end">
+              <div className="flex items-end gap-2">
                 <Button
                   onClick={handleSearch}
                   disabled={isLoading}
@@ -327,61 +405,35 @@ export default function Search() {
                 >
                   {isLoading ? "Buscando..." : "Buscar"}
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearchType("all");
+                    setQuery("");
+                    setStartDate("");
+                    setEndDate("");
+                    setPendingPayments(false);
+                    setCurrentPage(1);
+                    setSortBy("");
+                    setSortDirection("asc");
+                  }}
+                  className="w-full sm:w-auto border-muted-foreground/20 text-muted-foreground hover:bg-muted/20 transition-all duration-300 active:scale-95"
+                  aria-label="Limpar filtros de busca"
+                >
+                  Limpar Filtros
+                </Button>
               </div>
             </div>
 
             {(searchType === "events" || searchType === "all") && (
-              <div className="bg-muted/50 p-4 rounded-md shadow-sm">
-                <h2 className="text-lg font-semibold text-foreground mb-3">
-                  Filtros Adicionais
-                </h2>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                        <Calendar className="w-5 h-5 text-primary" />
-                        Data Inicial
-                      </label>
-                      <Input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="mt-1 w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
-                        aria-label="Data inicial para filtro"
-                      />
-                    </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                        <Calendar className="w-5 h-5 text-primary" />
-                        Data Final
-                      </label>
-                      <Input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="mt-1 w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
-                        aria-label="Data final para filtro"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="pendingPayments"
-                      checked={pendingPayments}
-                      onCheckedChange={(checked) =>
-                        setPendingPayments(!!checked)
-                      }
-                    />
-                    <label
-                      htmlFor="pendingPayments"
-                      className="flex items-center gap-2 text-sm font-medium text-muted-foreground"
-                    >
-                      <DollarSign className="w-5 h-5 text-primary" />
-                      Mostrar apenas eventos com pagamentos pendentes
-                    </label>
-                  </div>
-                </div>
-              </div>
+              <SearchFilters
+                startDate={startDate}
+                setStartDate={setStartDate}
+                endDate={endDate}
+                setEndDate={setEndDate}
+                pendingPayments={pendingPayments}
+                setPendingPayments={setPendingPayments}
+              />
             )}
 
             <div className="text-sm text-muted-foreground">
@@ -411,6 +463,42 @@ export default function Search() {
           </p>
         ) : (
           <>
+            <div className="flex justify-end mb-4">
+              <Select
+                value={sortBy}
+                onValueChange={(value: "name" | "date" | "none") => {
+                  setSortBy(value === "none" ? "" : value);
+                  setSortDirection("asc");
+                }}
+              >
+                <SelectTrigger className="w-[180px] rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300">
+                  <SelectValue placeholder="Ordenar por" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem ordenação</SelectItem>
+                  {searchType !== "users" && (
+                    <SelectItem value="date">Data</SelectItem>
+                  )}
+                  {searchType !== "events" && (
+                    <SelectItem value="name">Nome</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              {sortBy && (
+                <Button
+                  variant="outline"
+                  className="ml-2 border-muted-foreground/20 text-muted-foreground hover:bg-muted/20 transition-all duration-300 active:scale-95"
+                  onClick={() =>
+                    setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+                  }
+                  aria-label={`Ordenar em ordem ${
+                    sortDirection === "asc" ? "descendente" : "ascendente"
+                  }`}
+                >
+                  {sortDirection === "asc" ? "↑" : "↓"}
+                </Button>
+              )}
+            </div>
             <div className="space-y-4">
               {results.map((result) => (
                 <ResultItem
