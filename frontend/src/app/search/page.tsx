@@ -28,6 +28,7 @@ import {
 import { getToken } from "@/lib/auth";
 import { useDebounce } from "@/hooks/useDebounce";
 import { SearchFilters } from "@/components/SearchFilters";
+import { SkeletonResultItem } from "@/components/SkeletonResultItem";
 
 interface BaseResult {
   id: string;
@@ -454,8 +455,11 @@ export default function Search() {
         </div>
 
         {isLoading ? (
-          <div className="flex justify-center">
-            <Loading />
+          <div className="space-y-4">
+            {/* Renderizar 3 SkeletonResultItem para simular carregamento */}
+            {Array.from({ length: 3 }).map((_, index) => (
+              <SkeletonResultItem key={index} />
+            ))}
           </div>
         ) : results.length === 0 ? (
           <p className="text-muted-foreground text-center">
