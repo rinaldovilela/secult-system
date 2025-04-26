@@ -41,7 +41,7 @@ import {
 interface Artist {
   id: string;
   name: string;
-  email?: string; // Ajustado para opcional, já que os dados podem estar vazios
+  email?: string;
   role: "artist" | "group";
   bio?: string;
   area_of_expertise?: string;
@@ -86,6 +86,7 @@ export default function Reports() {
   });
 
   // Filtros para eventos
+  const [eventSearch, setEventSearch] = useState(""); // Novo estado para busca por nome
   const [eventDateStartFilter, setEventDateStartFilter] = useState("");
   const [eventDateEndFilter, setEventDateEndFilter] = useState("");
   const [eventPaymentFilter, setEventPaymentFilter] = useState<
@@ -100,6 +101,9 @@ export default function Reports() {
   const [artistTypeFilter, setArtistTypeFilter] = useState<
     "all" | "artist" | "group"
   >("all");
+
+  // Seleção de eventos
+  const [selectedEvents, setSelectedEvents] = useState<string[]>([]); // Novo estado para eventos selecionados
 
   // Colunas visíveis (eventos e artistas)
   const [visibleEventColumns, setVisibleEventColumns] = useState({
@@ -122,7 +126,7 @@ export default function Reports() {
 
   // Paginação
   const [currentPage, setCurrentPage] = useState(1);
-  const eventsPerPage = 10; // Número de eventos por página
+  const eventsPerPage = 10;
 
   // Ordenação
   const [sortColumn, setSortColumn] = useState<"date" | "title" | null>(null);
@@ -153,15 +157,11 @@ export default function Reports() {
         const fetchedArtists: Artist[] = artistsResponse.data;
         const fetchedEvents: Event[] = eventsResponse.data;
 
-        // Log temporário para verificar os dados retornados
-        console.log("Dados dos artistas retornados pela API:", fetchedArtists);
-
         setArtists(fetchedArtists);
         setFilteredArtists(fetchedArtists);
         setEvents(fetchedEvents);
         setFilteredEvents(fetchedEvents);
 
-        // Calcular estatísticas de resumo
         const totalPaid = fetchedEvents
           .flatMap((event) => event.artists)
           .filter((artist) => artist.is_paid)
@@ -202,6 +202,13 @@ export default function Reports() {
   // Filtrar e ordenar eventos com base nos filtros
   useEffect(() => {
     let filtered = [...events];
+
+    // Filtro por nome
+    if (eventSearch) {
+      filtered = filtered.filter((event) =>
+        event.title.toLowerCase().includes(eventSearch.toLowerCase())
+      );
+    }
 
     // Filtro por intervalo de datas
     if (eventDateStartFilter || eventDateEndFilter) {
@@ -260,6 +267,7 @@ export default function Reports() {
     setFilteredEvents(filtered);
     setCurrentPage(1); // Resetar a página para 1 ao aplicar filtros ou ordenação
   }, [
+    eventSearch, // Adicionado o eventSearch como dependência
     eventDateStartFilter,
     eventDateEndFilter,
     eventPaymentFilter,
@@ -294,6 +302,86 @@ export default function Reports() {
     indexOfLastEvent
   );
   const totalPages = Math.ceil(filteredEvents.length / eventsPerPage);
+
+  // Função para alternar a seleção de eventos
+  const toggleEventSelection = (eventId: string) => {
+    setSelectedEvents((prev) =>
+      prev.includes(eventId)
+        ? prev.filter((id) => id !== eventId)
+        : [...prev, eventId]
+    );
+  };
+
+  // Função para selecionar ou desmarcar todos os eventos
+  const toggleSelectAllEvents = () => {
+    if (selectedEvents.length === currentEvents.length) {
+      setSelectedEvents([]);
+    } else {
+      setSelectedEvents(currentEvents.map((event) => event.id));
+    }
+  };
+
+  // Função para baixar o CSV dos eventos selecionados
+  const downloadSelectedEventsCSV = () => {
+    if (selectedEvents.length === 0) {
+      toast({
+        title: "Nenhum evento selecionado",
+        description: "Selecione pelo menos um evento para exportar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const escapeCSVField = (field: string | undefined) => {
+      if (!field) return "";
+      const escaped = field.replace(/"/g, '""');
+      return `"${escaped}"`;
+    };
+
+    const csvContent: string[] = [];
+
+    const eventHeaders = [];
+    if (visibleEventColumns.id) eventHeaders.push("ID");
+    if (visibleEventColumns.title) eventHeaders.push("Título");
+    if (visibleEventColumns.date) eventHeaders.push("Data");
+    if (visibleEventColumns.location) eventHeaders.push("Local");
+    if (visibleEventColumns.target_audience) eventHeaders.push("Público-Alvo");
+    if (visibleEventColumns.artists)
+      eventHeaders.push("Artista", "Quantia (R$)", "Pago");
+
+    const selectedEventsData = filteredEvents.filter((event) =>
+      selectedEvents.includes(event.id)
+    );
+
+    const eventRows = selectedEventsData.flatMap((event) =>
+      event.artists.map((artist) => {
+        const row: string[] = [];
+        if (visibleEventColumns.id) row.push(event.id);
+        if (visibleEventColumns.title) row.push(escapeCSVField(event.title));
+        if (visibleEventColumns.date)
+          row.push(new Date(event.date).toLocaleDateString("pt-BR"));
+        if (visibleEventColumns.location)
+          row.push(escapeCSVField(event.location));
+        if (visibleEventColumns.target_audience)
+          row.push(escapeCSVField(event.target_audience));
+        if (visibleEventColumns.artists) {
+          row.push(escapeCSVField(artist.artist_name));
+          row.push(artist.amount.toFixed(2));
+          row.push(artist.is_paid ? "Sim" : "Não");
+        }
+        return row;
+      })
+    );
+
+    csvContent.push("Relatório de Eventos Selecionados");
+    csvContent.push(eventHeaders.join(","));
+    csvContent.push(...eventRows.map((row) => row.join(",")));
+
+    const blob = new Blob([csvContent.join("\n")], {
+      type: "text/csv;charset=utf-8;",
+    });
+    saveAs(blob, `relatorio-eventos-selecionados.csv`);
+  };
 
   const downloadCSV = (type: "artists" | "events" | "all") => {
     const escapeCSVField = (field: string | undefined) => {
@@ -730,6 +818,25 @@ export default function Reports() {
             <h2 className="text-2xl font-bold tracking-tight text-foreground mb-4">
               Eventos
             </h2>
+            <div className="flex flex-col sm:flex-row justify-between items-center mb-4">
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <Input
+                  type="text"
+                  placeholder="Buscar por nome do evento..."
+                  value={eventSearch}
+                  onChange={(e) => setEventSearch(e.target.value)}
+                  className="w-full sm:w-64 border-muted-foreground/20 focus:border-primary"
+                />
+              </div>
+              <Button
+                onClick={downloadSelectedEventsCSV}
+                disabled={selectedEvents.length === 0}
+                className="mt-4 sm:mt-0 bg-primary hover:bg-primary/90 text-primary-foreground transition-all duration-300 active:scale-95"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Exportar Eventos Selecionados (CSV)
+              </Button>
+            </div>
             <div className="mb-4">
               <h3 className="text-sm font-medium text-muted-foreground mb-2">
                 Filtros
@@ -784,8 +891,12 @@ export default function Reports() {
                   <Select
                     value={eventTargetAudienceFilter}
                     onValueChange={(
-                      value: "all" | "Geral" | "Infantil" | "Adulto"
-                    ) => setEventTargetAudienceFilter(value)}
+                      value: "distribuall" | "Geral" | "Infantil" | "Adulto"
+                    ) =>
+                      setEventTargetAudienceFilter(
+                        value as "all" | "Geral" | "Infantil" | "Adulto"
+                      )
+                    }
                   >
                     <SelectTrigger className="w-full border-muted-foreground/20">
                       <SelectValue placeholder="Público-Alvo" />
@@ -920,6 +1031,14 @@ export default function Reports() {
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-muted/20">
+                      <TableHead className="min-w-[50px]">
+                        <Checkbox
+                          checked={
+                            selectedEvents.length === currentEvents.length
+                          }
+                          onCheckedChange={toggleSelectAllEvents}
+                        />
+                      </TableHead>
                       {visibleEventColumns.id && (
                         <TableHead className="min-w-[100px]">
                           <div className="flex items-center gap-2">
@@ -1003,6 +1122,14 @@ export default function Reports() {
                   <TableBody>
                     {currentEvents.map((event) => (
                       <TableRow key={event.id} className="hover:bg-muted/20">
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedEvents.includes(event.id)}
+                            onCheckedChange={() =>
+                              toggleEventSelection(event.id)
+                            }
+                          />
+                        </TableCell>
                         {visibleEventColumns.id && (
                           <TableCell>{event.id}</TableCell>
                         )}
@@ -1033,12 +1160,9 @@ export default function Reports() {
                                     key={artist.artist_id}
                                     className="grid grid-cols-[150px_100px_100px] gap-2 items-center"
                                   >
-                                    {/* Nome do Artista */}
                                     <span className="truncate">
                                       {artist.artist_name}
                                     </span>
-
-                                    {/* Quantia */}
                                     <span className="flex items-center gap-1">
                                       <DollarSign className="w-4 h-4 text-muted-foreground" />
                                       R${" "}
@@ -1047,8 +1171,6 @@ export default function Reports() {
                                         maximumFractionDigits: 2,
                                       })}
                                     </span>
-
-                                    {/* Status de Pagamento */}
                                     <span
                                       className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
                                         artist.is_paid

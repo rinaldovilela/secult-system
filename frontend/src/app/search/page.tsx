@@ -491,7 +491,7 @@ export default function Search() {
               {sortBy && (
                 <Button
                   variant="outline"
-                  className="ml-2 border-muted-foreground/20 text-muted-foreground hover:bg-muted/20 transition-all duration-300 active:scale-95"
+                  className="ml-2 bg-muted/90 border-muted-foreground/20 text-muted-foreground hover:bg-muted/100 transition-all duration-300 active:scale-95"
                   onClick={() =>
                     setSortDirection(sortDirection === "asc" ? "desc" : "asc")
                   }
