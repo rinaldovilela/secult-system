@@ -1,4 +1,3 @@
-// app/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -9,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { toast } from "@/components/ui/use-toast";
 import { Calendar, MapPin, Clock, Users } from "lucide-react";
 
 // Definir a BASE_URL para chamadas à API
@@ -32,7 +30,7 @@ interface Event {
   }>;
 }
 
-// Componente para exibir cada card de evento (inspirado no ResultItem do app/search/page.tsx)
+// Componente para exibir cada card de evento
 const EventCard = ({ event, index }: { event: Event; index: number }) => {
   return (
     <Card
@@ -89,21 +87,28 @@ export default function Home() {
   const [isLoadingEvents, setIsLoadingEvents] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Buscar eventos da API
+  // Buscar eventos apenas se o usuário estiver autenticado
   useEffect(() => {
-    const fetchEvents = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        if (!token) {
-          throw new Error("Faça login novamente, para vizualisar os eventos.");
-        }
+    if (isAuthLoading) return;
 
+    // Só buscar eventos se o usuário estiver autenticado
+    if (!authUser) {
+      setIsLoadingEvents(false); // Para evitar estado de carregamento infinito
+      return;
+    }
+
+    const fetchEvents = async () => {
+      const controller = new AbortController();
+      try {
         const response = await axios.get(`${BASE_URL}/api/events`, {
           headers: {
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
+          signal: controller.signal,
         });
-        // Ordenar eventos por data (mais recentes primeiro) e limitar a 3
+
+        // TODO: Otimizar no backend: suportar ordenação e limite na API
+        // Exemplo: /api/events?sort=created_at&order=desc&limit=3
         const sortedEvents = response.data
           .sort(
             (a: Event, b: Event) =>
@@ -111,37 +116,25 @@ export default function Home() {
               new Date(a.created_at).getTime()
           )
           .slice(0, 3);
+
         setEvents(sortedEvents);
         setError(null);
       } catch (error) {
+        if (axios.isCancel(error)) return;
         console.error("Erro ao buscar eventos:", error);
         const errorMessage =
           error instanceof Error
             ? error.message
             : "Erro ao carregar eventos. Tente novamente mais tarde.";
         setError(errorMessage);
-        toast({
-          title: "Erro ao carregar eventos",
-          description: errorMessage,
-          variant: "destructive",
-        });
       } finally {
         setIsLoadingEvents(false);
       }
+
+      return () => controller.abort();
     };
 
     fetchEvents();
-  }, []);
-
-  // Verificar autenticação (inspirado no app/search/page.tsx)
-  useEffect(() => {
-    if (!isAuthLoading && !authUser) {
-      toast({
-        title: "Acesso não autorizado",
-        description: "Você precisa estar logado para acessar esta página.",
-        variant: "destructive",
-      });
-    }
   }, [isAuthLoading, authUser]);
 
   return (
@@ -157,6 +150,7 @@ export default function Home() {
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
+                  aria-label="Ícone do Secult System"
                 >
                   <path
                     d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5"
@@ -250,62 +244,64 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Seção de Eventos em Destaque */}
-      <section className="py-12 sm:py-20 px-4 sm:px-6 lg:px-8 bg-muted/50">
-        <div className="container mx-auto">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center">
-              Eventos em Destaque
-            </h2>
-            <Link href="/search">
-              <Button
-                variant="ghost"
-                className="text-primary hover:bg-primary/10 transition-all duration-300"
-                aria-label="Ver todos os eventos"
-              >
-                Ver Todos
-              </Button>
-            </Link>
-          </div>
-          {error && (
-            <Alert variant="destructive" className="mb-6">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {isLoadingEvents ? (
-              // Esqueleto de carregamento para eventos
-              Array.from({ length: 3 }).map((_, index) => (
-                <Card
-                  key={index}
-                  className="bg-muted shadow-sm rounded-lg animate-pulse"
+      {/* Seção de Eventos em Destaque - Renderizar apenas se o usuário estiver autenticado */}
+      {authUser && (
+        <section className="py-12 sm:py-20 px-4 sm:px-6 lg:px-8 bg-muted/50">
+          <div className="container mx-auto">
+            <header className="flex flex-col sm:flex-row justify-between items-center mb-8">
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+                Eventos em Destaque
+              </h2>
+              <Link href="/search">
+                <Button
+                  variant="ghost"
+                  className="text-primary hover:bg-primary/10 transition-all duration-300 mt-4 sm:mt-0"
+                  aria-label="Ver todos os eventos"
                 >
-                  <CardHeader>
-                    <Skeleton className="h-6 w-3/4 bg-muted-foreground/20" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <Skeleton className="h-4 w-1/2 bg-muted-foreground/20" />
-                      <Skeleton className="h-4 w-2/3 bg-muted-foreground/20" />
-                      <Skeleton className="h-4 w-1/3 bg-muted-foreground/20" />
-                      <Skeleton className="h-4 w-1/2 bg-muted-foreground/20" />
-                      <Skeleton className="h-10 w-24 mt-4 bg-muted-foreground/20" />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            ) : events.length === 0 ? (
-              <p className="text-center text-muted-foreground col-span-full">
-                Nenhum evento encontrado.
-              </p>
-            ) : (
-              events.map((event, index) => (
-                <EventCard key={event.id} event={event} index={index} />
-              ))
+                  Ver Todos
+                </Button>
+              </Link>
+            </header>
+            {error && (
+              <Alert variant="destructive" className="mb-6">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {isLoadingEvents ? (
+                // Esqueleto de carregamento para eventos
+                Array.from({ length: 3 }).map((_, index) => (
+                  <Card
+                    key={index}
+                    className="bg-muted shadow-sm rounded-lg animate-pulse"
+                  >
+                    <CardHeader>
+                      <Skeleton className="h-6 w-3/4 bg-muted-foreground/20" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-1/2 bg-muted-foreground/20" />
+                        <Skeleton className="h-4 w-2/3 bg-muted-foreground/20" />
+                        <Skeleton className="h-4 w-1/3 bg-muted-foreground/20" />
+                        <Skeleton className="h-4 w-1/2 bg-muted-foreground/20" />
+                        <Skeleton className="h-10 w-24 mt-4 bg-muted-foreground/20" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : events.length === 0 ? (
+                <p className="text-center text-muted-foreground col-span-full">
+                  Nenhum evento encontrado.
+                </p>
+              ) : (
+                events.map((event, index) => (
+                  <EventCard key={event.id} event={event} index={index} />
+                ))
+              )}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
     </div>
   );
 }
