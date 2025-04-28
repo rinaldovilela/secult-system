@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import Loading from "@/components/ui/loading";
 import { saveAs } from "file-saver";
 import {
@@ -86,7 +87,7 @@ export default function Reports() {
   });
 
   // Filtros para eventos
-  const [eventSearch, setEventSearch] = useState(""); // Novo estado para busca por nome
+  const [eventSearch, setEventSearch] = useState("");
   const [eventDateStartFilter, setEventDateStartFilter] = useState("");
   const [eventDateEndFilter, setEventDateEndFilter] = useState("");
   const [eventPaymentFilter, setEventPaymentFilter] = useState<
@@ -103,7 +104,7 @@ export default function Reports() {
   >("all");
 
   // Seleção de eventos
-  const [selectedEvents, setSelectedEvents] = useState<string[]>([]); // Novo estado para eventos selecionados
+  const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
 
   // Colunas visíveis (eventos e artistas)
   const [visibleEventColumns, setVisibleEventColumns] = useState({
@@ -124,13 +125,28 @@ export default function Reports() {
     birth_date: true,
   });
 
-  // Paginação
-  const [currentPage, setCurrentPage] = useState(1);
-  const eventsPerPage = 10;
+  // Paginação para eventos
+  const [currentEventPage, setCurrentEventPage] = useState(1);
 
-  // Ordenação
-  const [sortColumn, setSortColumn] = useState<"date" | "title" | null>(null);
+  // Paginação para artistas
+  const [currentArtistPage, setCurrentArtistPage] = useState(1);
+
+  // Quantidade de itens por página (compartilhado entre eventos e artistas)
+  const [itemsPerPage, setItemsPerPage] = useState<number>(5);
+
+  // Ordenação para eventos
+  const [sortColumn, setSortColumn] = useState<
+    "id" | "title" | "date" | "location" | "target_audience" | "artists" | null
+  >(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  // Ordenação para artistas
+  const [artistSortColumn, setArtistSortColumn] = useState<
+    "id" | "name" | "email" | "role" | "area_of_expertise" | "birth_date" | null
+  >(null);
+  const [artistSortDirection, setArtistSortDirection] = useState<
+    "asc" | "desc"
+  >("asc");
 
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -203,14 +219,12 @@ export default function Reports() {
   useEffect(() => {
     let filtered = [...events];
 
-    // Filtro por nome
     if (eventSearch) {
       filtered = filtered.filter((event) =>
         event.title.toLowerCase().includes(eventSearch.toLowerCase())
       );
     }
 
-    // Filtro por intervalo de datas
     if (eventDateStartFilter || eventDateEndFilter) {
       const startDate = eventDateStartFilter
         ? new Date(eventDateStartFilter)
@@ -230,7 +244,6 @@ export default function Reports() {
       });
     }
 
-    // Filtro por status de pagamento
     if (eventPaymentFilter !== "all") {
       filtered = filtered.filter((event) =>
         event.artists.some((artist) =>
@@ -239,23 +252,25 @@ export default function Reports() {
       );
     }
 
-    // Filtro por público-alvo
     if (eventTargetAudienceFilter !== "all") {
       filtered = filtered.filter(
         (event) => event.target_audience === eventTargetAudienceFilter
       );
     }
 
-    // Ordenação
     if (sortColumn) {
       filtered.sort((a, b) => {
-        let valueA, valueB;
+        let valueA: any, valueB: any;
         if (sortColumn === "date") {
           valueA = new Date(a.date).getTime();
           valueB = new Date(b.date).getTime();
+        } else if (sortColumn === "artists") {
+          // Ordenar pela soma dos valores pagos
+          valueA = a.artists.reduce((sum, artist) => sum + artist.amount, 0);
+          valueB = b.artists.reduce((sum, artist) => sum + artist.amount, 0);
         } else {
-          valueA = a[sortColumn].toLowerCase();
-          valueB = b[sortColumn].toLowerCase();
+          valueA = a[sortColumn]?.toLowerCase() || "";
+          valueB = b[sortColumn]?.toLowerCase() || "";
         }
 
         if (valueA < valueB) return sortDirection === "asc" ? -1 : 1;
@@ -265,9 +280,9 @@ export default function Reports() {
     }
 
     setFilteredEvents(filtered);
-    setCurrentPage(1); // Resetar a página para 1 ao aplicar filtros ou ordenação
+    setCurrentEventPage(1);
   }, [
-    eventSearch, // Adicionado o eventSearch como dependência
+    eventSearch,
     eventDateStartFilter,
     eventDateEndFilter,
     eventPaymentFilter,
@@ -277,7 +292,7 @@ export default function Reports() {
     events,
   ]);
 
-  // Filtrar artistas com base nos filtros
+  // Filtrar e ordenar artistas com base nos filtros
   useEffect(() => {
     let filtered = [...artists];
 
@@ -291,17 +306,50 @@ export default function Reports() {
       filtered = filtered.filter((artist) => artist.role === artistTypeFilter);
     }
 
+    if (artistSortColumn) {
+      filtered.sort((a, b) => {
+        let valueA: any, valueB: any;
+        if (artistSortColumn === "birth_date") {
+          valueA = a.birth_date ? new Date(a.birth_date).getTime() : 0;
+          valueB = b.birth_date ? new Date(b.birth_date).getTime() : 0;
+        } else {
+          valueA = a[artistSortColumn]?.toLowerCase() || "";
+          valueB = b[artistSortColumn]?.toLowerCase() || "";
+        }
+
+        if (valueA < valueB) return artistSortDirection === "asc" ? -1 : 1;
+        if (valueA > valueB) return artistSortDirection === "asc" ? 1 : -1;
+        return 0;
+      });
+    }
+
     setFilteredArtists(filtered);
-  }, [artistSearch, artistTypeFilter, artists]);
+    setCurrentArtistPage(1);
+  }, [
+    artistSearch,
+    artistTypeFilter,
+    artistSortColumn,
+    artistSortDirection,
+    artists,
+  ]);
+
+  // Calcular artistas a serem exibidos na página atual
+  const indexOfLastArtist = currentArtistPage * itemsPerPage;
+  const indexOfFirstArtist = indexOfLastArtist - itemsPerPage;
+  const currentArtists = filteredArtists.slice(
+    indexOfFirstArtist,
+    indexOfLastArtist
+  );
+  const totalArtistPages = Math.ceil(filteredArtists.length / itemsPerPage);
 
   // Calcular eventos a serem exibidos na página atual
-  const indexOfLastEvent = currentPage * eventsPerPage;
-  const indexOfFirstEvent = indexOfLastEvent - eventsPerPage;
+  const indexOfLastEvent = currentEventPage * itemsPerPage;
+  const indexOfFirstEvent = indexOfLastEvent - itemsPerPage;
   const currentEvents = filteredEvents.slice(
     indexOfFirstEvent,
     indexOfLastEvent
   );
-  const totalPages = Math.ceil(filteredEvents.length / eventsPerPage);
+  const totalEventPages = Math.ceil(filteredEvents.length / itemsPerPage);
 
   // Função para alternar a seleção de eventos
   const toggleEventSelection = (eventId: string) => {
@@ -469,51 +517,72 @@ export default function Reports() {
     saveAs(blob, `relatorio-secult-${type}.csv`);
   };
 
-  if (isAuthLoading || isLoading) return <Loading />;
+  if (isAuthLoading) return <Loading />;
   if (!user || !["admin", "secretary"].includes(user.role)) return null;
 
   return (
     <div className="min-h-screen bg-background py-12 sm:py-20 px-4 sm:px-6 lg:px-8">
       <div className="container mx-auto">
         {/* Seção de Resumo */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-muted shadow-sm rounded-lg p-4 flex items-center gap-3 hover:shadow-lg hover:scale-105 transition-all duration-300">
-            <Calendar className="w-8 h-8 text-primary" />
-            <div>
-              <p className="text-muted-foreground text-sm">Total de Eventos</p>
-              <p className="text-xl font-bold text-foreground">
-                {summaryStats.totalEvents}
-              </p>
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className="bg-muted shadow-sm rounded-lg p-4 flex items-center gap-3"
+              >
+                <Skeleton className="w-8 h-8 rounded-full bg-muted-foreground/20" />
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-24 bg-muted-foreground/20" />
+                  <Skeleton className="h-6 w-16 bg-muted-foreground/20" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div className="bg-muted shadow-sm rounded-lg p-4 flex items-center gap-3 hover:shadow-lg hover:scale-105 transition-all duration-300">
+              <Calendar className="w-8 h-8 text-primary" />
+              <div>
+                <p className="text-muted-foreground text-sm">
+                  Total de Eventos
+                </p>
+                <p className="text-xl font-bold text-foreground">
+                  {summaryStats.totalEvents}
+                </p>
+              </div>
+            </div>
+            <div className="bg-muted shadow-sm rounded-lg p-4 flex items-center gap-3 hover:shadow-lg hover:scale-105 transition-all duration-300">
+              <Users className="w-8 h-8 text-primary" />
+              <div>
+                <p className="text-muted-foreground text-sm">
+                  Total de Artistas
+                </p>
+                <p className="text-xl font-bold text-foreground">
+                  {summaryStats.totalArtists}
+                </p>
+              </div>
+            </div>
+            <div className="bg-muted shadow-sm rounded-lg p-4 flex items-center gap-3 hover:shadow-lg hover:scale-105 transition-all duration-300">
+              <DollarSign className="w-8 h-8 text-primary" />
+              <div>
+                <p className="text-muted-foreground text-sm">Total Pago</p>
+                <p className="text-xl font-bold text-foreground">
+                  R$ {summaryStats.totalPaid.toFixed(2)}
+                </p>
+              </div>
+            </div>
+            <div className="bg-muted shadow-sm rounded-lg p-4 flex items-center gap-3 hover:shadow-lg hover:scale-105 transition-all duration-300">
+              <DollarSign className="w-8 h-8 text-primary" />
+              <div>
+                <p className="text-muted-foreground text-sm">Total Pendente</p>
+                <p className="text-xl font-bold text-foreground">
+                  R$ {summaryStats.totalPending.toFixed(2)}
+                </p>
+              </div>
             </div>
           </div>
-          <div className="bg-muted shadow-sm rounded-lg p-4 flex items-center gap-3 hover:shadow-lg hover:scale-105 transition-all duration-300">
-            <Users className="w-8 h-8 text-primary" />
-            <div>
-              <p className="text-muted-foreground text-sm">Total de Artistas</p>
-              <p className="text-xl font-bold text-foreground">
-                {summaryStats.totalArtists}
-              </p>
-            </div>
-          </div>
-          <div className="bg-muted shadow-sm rounded-lg p-4 flex items-center gap-3 hover:shadow-lg hover:scale-105 transition-all duration-300">
-            <DollarSign className="w-8 h-8 text-primary" />
-            <div>
-              <p className="text-muted-foreground text-sm">Total Pago</p>
-              <p className="text-xl font-bold text-foreground">
-                R$ {summaryStats.totalPaid.toFixed(2)}
-              </p>
-            </div>
-          </div>
-          <div className="bg-muted shadow-sm rounded-lg p-4 flex items-center gap-3 hover:shadow-lg hover:scale-105 transition-all duration-300">
-            <DollarSign className="w-8 h-8 text-primary" />
-            <div>
-              <p className="text-muted-foreground text-sm">Total Pendente</p>
-              <p className="text-xl font-bold text-foreground">
-                R$ {summaryStats.totalPending.toFixed(2)}
-              </p>
-            </div>
-          </div>
-        </div>
+        )}
 
         {/* Cabeçalho e Botões de Exportação */}
         <div className="flex flex-col sm:flex-row justify-between items-center mb-8">
@@ -573,6 +642,28 @@ export default function Reports() {
                     <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="artist">Artistas</SelectItem>
                     <SelectItem value="group">Grupos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-3 mt-4 sm:mt-0">
+                <span className="text-sm text-muted-foreground">
+                  Itens por página:
+                </span>
+                <Select
+                  value={itemsPerPage.toString()}
+                  onValueChange={(value) => {
+                    setItemsPerPage(Number(value));
+                    setCurrentArtistPage(1);
+                    setCurrentEventPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-24 border-muted-foreground/20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5</SelectItem>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -692,7 +783,7 @@ export default function Reports() {
                 </div>
               </div>
             </div>
-            {filteredArtists.length > 0 ? (
+            {isLoading ? (
               <div className="border border-muted-foreground/20 rounded-lg overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -751,7 +842,202 @@ export default function Reports() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredArtists.map((artist) => (
+                    {Array.from({ length: itemsPerPage }).map((_, index) => (
+                      <TableRow key={index}>
+                        {visibleArtistColumns.id && (
+                          <TableCell>
+                            <Skeleton className="h-6 w-24 bg-muted-foreground/20" />
+                          </TableCell>
+                        )}
+                        {visibleArtistColumns.name && (
+                          <TableCell>
+                            <Skeleton className="h-6 w-32 bg-muted-foreground/20" />
+                          </TableCell>
+                        )}
+                        {visibleArtistColumns.email && (
+                          <TableCell>
+                            <Skeleton className="h-6 w-40 bg-muted-foreground/20" />
+                          </TableCell>
+                        )}
+                        {visibleArtistColumns.role && (
+                          <TableCell>
+                            <Skeleton className="h-6 w-20 bg-muted-foreground/20" />
+                          </TableCell>
+                        )}
+                        {visibleArtistColumns.area_of_expertise && (
+                          <TableCell>
+                            <Skeleton className="h-6 w-28 bg-muted-foreground/20" />
+                          </TableCell>
+                        )}
+                        {visibleArtistColumns.birth_date && (
+                          <TableCell>
+                            <Skeleton className="h-6 w-24 bg-muted-foreground/20" />
+                          </TableCell>
+                        )}
+                        <TableCell>
+                          <Skeleton className="h-8 w-24 bg-muted-foreground/20" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : currentArtists.length > 0 ? (
+              <div className="border border-muted-foreground/20 rounded-lg overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-muted/20">
+                      {visibleArtistColumns.id && (
+                        <TableHead className="min-w-[100px]">
+                          <div
+                            className="flex items-center gap-2 cursor-pointer"
+                            onClick={() => {
+                              setArtistSortColumn("id");
+                              setArtistSortDirection(
+                                artistSortColumn === "id" &&
+                                  artistSortDirection === "asc"
+                                  ? "desc"
+                                  : "asc"
+                              );
+                            }}
+                          >
+                            <User className="w-5 h-5 text-primary" />
+                            <span>ID</span>
+                            {artistSortColumn === "id" && (
+                              <span>
+                                {artistSortDirection === "asc" ? "↑" : "↓"}
+                              </span>
+                            )}
+                          </div>
+                        </TableHead>
+                      )}
+                      {visibleArtistColumns.name && (
+                        <TableHead className="min-w-[150px]">
+                          <div
+                            className="flex items-center gap-2 cursor-pointer"
+                            onClick={() => {
+                              setArtistSortColumn("name");
+                              setArtistSortDirection(
+                                artistSortColumn === "name" &&
+                                  artistSortDirection === "asc"
+                                  ? "desc"
+                                  : "asc"
+                              );
+                            }}
+                          >
+                            <User className="w-5 h-5 text-primary" />
+                            <span>Nome</span>
+                            {artistSortColumn === "name" && (
+                              <span>
+                                {artistSortDirection === "asc" ? "↑" : "↓"}
+                              </span>
+                            )}
+                          </div>
+                        </TableHead>
+                      )}
+                      {visibleArtistColumns.email && (
+                        <TableHead className="min-w-[200px]">
+                          <div
+                            className="flex items-center gap-2 cursor-pointer"
+                            onClick={() => {
+                              setArtistSortColumn("email");
+                              setArtistSortDirection(
+                                artistSortColumn === "email" &&
+                                  artistSortDirection === "asc"
+                                  ? "desc"
+                                  : "asc"
+                              );
+                            }}
+                          >
+                            <Mail className="w-5 h-5 text-primary" />
+                            <span>Email</span>
+                            {artistSortColumn === "email" && (
+                              <span>
+                                {artistSortDirection === "asc" ? "↑" : "↓"}
+                              </span>
+                            )}
+                          </div>
+                        </TableHead>
+                      )}
+                      {visibleArtistColumns.role && (
+                        <TableHead className="min-w-[100px]">
+                          <div
+                            className="flex items-center gap-2 cursor-pointer"
+                            onClick={() => {
+                              setArtistSortColumn("role");
+                              setArtistSortDirection(
+                                artistSortColumn === "role" &&
+                                  artistSortDirection === "asc"
+                                  ? "desc"
+                                  : "asc"
+                              );
+                            }}
+                          >
+                            <Users className="w-5 h-5 text-primary" />
+                            <span>Tipo</span>
+                            {artistSortColumn === "role" && (
+                              <span>
+                                {artistSortDirection === "asc" ? "↑" : "↓"}
+                              </span>
+                            )}
+                          </div>
+                        </TableHead>
+                      )}
+                      {visibleArtistColumns.area_of_expertise && (
+                        <TableHead className="min-w-[150px]">
+                          <div
+                            className="flex items-center gap-2 cursor-pointer"
+                            onClick={() => {
+                              setArtistSortColumn("area_of_expertise");
+                              setArtistSortDirection(
+                                artistSortColumn === "area_of_expertise" &&
+                                  artistSortDirection === "asc"
+                                  ? "desc"
+                                  : "asc"
+                              );
+                            }}
+                          >
+                            <FileText className="w-5 h-5 text-primary" />
+                            <span>Área de Atuação</span>
+                            {artistSortColumn === "area_of_expertise" && (
+                              <span>
+                                {artistSortDirection === "asc" ? "↑" : "↓"}
+                              </span>
+                            )}
+                          </div>
+                        </TableHead>
+                      )}
+                      {visibleArtistColumns.birth_date && (
+                        <TableHead className="min-w-[150px]">
+                          <div
+                            className="flex items-center gap-2 cursor-pointer"
+                            onClick={() => {
+                              setArtistSortColumn("birth_date");
+                              setArtistSortDirection(
+                                artistSortColumn === "birth_date" &&
+                                  artistSortDirection === "asc"
+                                  ? "desc"
+                                  : "asc"
+                              );
+                            }}
+                          >
+                            <Calendar className="w-5 h-5 text-primary" />
+                            <span>Data de Nascimento</span>
+                            {artistSortColumn === "birth_date" && (
+                              <span>
+                                {artistSortDirection === "asc" ? "↑" : "↓"}
+                              </span>
+                            )}
+                          </div>
+                        </TableHead>
+                      )}
+                      <TableHead className="min-w-[100px]">
+                        <span>Ações</span>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {currentArtists.map((artist) => (
                       <TableRow key={artist.id} className="hover:bg-muted/20">
                         {visibleArtistColumns.id && (
                           <TableCell>{artist.id}</TableCell>
@@ -810,6 +1096,28 @@ export default function Reports() {
               <p className="text-muted-foreground">
                 Nenhum artista encontrado.
               </p>
+            )}
+            {/* Controles de Paginação para Artistas */}
+            {filteredArtists.length > 0 && !isLoading && (
+              <div className="flex justify-between items-center mt-4">
+                <Button
+                  disabled={currentArtistPage === 1}
+                  onClick={() => setCurrentArtistPage((prev) => prev - 1)}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                >
+                  Anterior
+                </Button>
+                <span>
+                  Página {currentArtistPage} de {totalArtistPages}
+                </span>
+                <Button
+                  disabled={currentArtistPage === totalArtistPages}
+                  onClick={() => setCurrentArtistPage((prev) => prev + 1)}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                >
+                  Próxima
+                </Button>
+              </div>
             )}
           </div>
 
@@ -891,7 +1199,7 @@ export default function Reports() {
                   <Select
                     value={eventTargetAudienceFilter}
                     onValueChange={(
-                      value: "distribuall" | "Geral" | "Infantil" | "Adulto"
+                      value: "all" | "Geral" | "Infantil" | "Adulto"
                     ) =>
                       setEventTargetAudienceFilter(
                         value as "all" | "Geral" | "Infantil" | "Adulto"
@@ -1026,7 +1334,112 @@ export default function Reports() {
                 </div>
               </div>
             </div>
-            {currentEvents.length > 0 ? (
+            {isLoading ? (
+              <div className="border border-muted-foreground/20 rounded-lg overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-muted/20">
+                      <TableHead className="min-w-[50px]">
+                        <Checkbox disabled />
+                      </TableHead>
+                      {visibleEventColumns.id && (
+                        <TableHead className="min-w-[100px]">
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-5 h-5 text-primary" />
+                            <span>ID</span>
+                          </div>
+                        </TableHead>
+                      )}
+                      {visibleEventColumns.title && (
+                        <TableHead className="min-w-[150px]">
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-5 h-5 text-primary" />
+                            <span>Título</span>
+                          </div>
+                        </TableHead>
+                      )}
+                      {visibleEventColumns.date && (
+                        <TableHead className="min-w-[120px]">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-5 h-5 text-primary" />
+                            <span>Data</span>
+                          </div>
+                        </TableHead>
+                      )}
+                      {visibleEventColumns.location && (
+                        <TableHead className="min-w-[150px]">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-5 h-5 text-primary" />
+                            <span>Local</span>
+                          </div>
+                        </TableHead>
+                      )}
+                      {visibleEventColumns.target_audience && (
+                        <TableHead className="min-w-[120px]">
+                          <div className="flex items-center gap-2">
+                            <Users className="w-5 h-5 text-primary" />
+                            <span>Público-Alvo</span>
+                          </div>
+                        </TableHead>
+                      )}
+                      {visibleEventColumns.artists && (
+                        <TableHead className="min-w-[300px]">
+                          <div className="flex items-center gap-2">
+                            <User className="w-5 h-5 text-primary" />
+                            <span>Artistas</span>
+                          </div>
+                        </TableHead>
+                      )}
+                      <TableHead className="min-w-[100px]">
+                        <span>Ações</span>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Array.from({ length: itemsPerPage }).map((_, index) => (
+                      <TableRow key={index}>
+                        <TableCell>
+                          <Skeleton className="h-6 w-6 bg-muted-foreground/20" />
+                        </TableCell>
+                        {visibleEventColumns.id && (
+                          <TableCell>
+                            <Skeleton className="h-6 w-24 bg-muted-foreground/20" />
+                          </TableCell>
+                        )}
+                        {visibleEventColumns.title && (
+                          <TableCell>
+                            <Skeleton className="h-6 w-32 bg-muted-foreground/20" />
+                          </TableCell>
+                        )}
+                        {visibleEventColumns.date && (
+                          <TableCell>
+                            <Skeleton className="h-6 w-24 bg-muted-foreground/20" />
+                          </TableCell>
+                        )}
+                        {visibleEventColumns.location && (
+                          <TableCell>
+                            <Skeleton className="h-6 w-28 bg-muted-foreground/20" />
+                          </TableCell>
+                        )}
+                        {visibleEventColumns.target_audience && (
+                          <TableCell>
+                            <Skeleton className="h-6 w-20 bg-muted-foreground/20" />
+                          </TableCell>
+                        )}
+                        {visibleEventColumns.artists && (
+                          <TableCell>
+                            <Skeleton className="h-6 w-48 bg-muted-foreground/20" />
+                          </TableCell>
+                        )}
+                        <TableCell>
+                          <Skeleton className="h-8 w-24 bg-muted-foreground/20" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : currentEvents.length > 0 ? (
               <div className="border border-muted-foreground/20 rounded-lg overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -1041,9 +1454,22 @@ export default function Reports() {
                       </TableHead>
                       {visibleEventColumns.id && (
                         <TableHead className="min-w-[100px]">
-                          <div className="flex items-center gap-2">
+                          <div
+                            className="flex items-center gap-2 cursor-pointer"
+                            onClick={() => {
+                              setSortColumn("id");
+                              setSortDirection(
+                                sortColumn === "id" && sortDirection === "asc"
+                                  ? "desc"
+                                  : "asc"
+                              );
+                            }}
+                          >
                             <FileText className="w-5 h-5 text-primary" />
                             <span>ID</span>
+                            {sortColumn === "id" && (
+                              <span>{sortDirection === "asc" ? "↑" : "↓"}</span>
+                            )}
                           </div>
                         </TableHead>
                       )}
@@ -1092,25 +1518,67 @@ export default function Reports() {
                       )}
                       {visibleEventColumns.location && (
                         <TableHead className="min-w-[150px]">
-                          <div className="flex items-center gap-2">
+                          <div
+                            className="flex items-center gap-2 cursor-pointer"
+                            onClick={() => {
+                              setSortColumn("location");
+                              setSortDirection(
+                                sortColumn === "location" &&
+                                  sortDirection === "asc"
+                                  ? "desc"
+                                  : "asc"
+                              );
+                            }}
+                          >
                             <MapPin className="w-5 h-5 text-primary" />
                             <span>Local</span>
+                            {sortColumn === "location" && (
+                              <span>{sortDirection === "asc" ? "↑" : "↓"}</span>
+                            )}
                           </div>
                         </TableHead>
                       )}
                       {visibleEventColumns.target_audience && (
                         <TableHead className="min-w-[120px]">
-                          <div className="flex items-center gap-2">
+                          <div
+                            className="flex items-center gap-2 cursor-pointer"
+                            onClick={() => {
+                              setSortColumn("target_audience");
+                              setSortDirection(
+                                sortColumn === "target_audience" &&
+                                  sortDirection === "asc"
+                                  ? "desc"
+                                  : "asc"
+                              );
+                            }}
+                          >
                             <Users className="w-5 h-5 text-primary" />
                             <span>Público-Alvo</span>
+                            {sortColumn === "target_audience" && (
+                              <span>{sortDirection === "asc" ? "↑" : "↓"}</span>
+                            )}
                           </div>
                         </TableHead>
                       )}
                       {visibleEventColumns.artists && (
                         <TableHead className="min-w-[300px]">
-                          <div className="flex items-center gap-2">
+                          <div
+                            className="flex items-center gap-2 cursor-pointer"
+                            onClick={() => {
+                              setSortColumn("artists");
+                              setSortDirection(
+                                sortColumn === "artists" &&
+                                  sortDirection === "asc"
+                                  ? "desc"
+                                  : "asc"
+                              );
+                            }}
+                          >
                             <User className="w-5 h-5 text-primary" />
                             <span>Artistas</span>
+                            {sortColumn === "artists" && (
+                              <span>{sortDirection === "asc" ? "↑" : "↓"}</span>
+                            )}
                           </div>
                         </TableHead>
                       )}
@@ -1215,22 +1683,22 @@ export default function Reports() {
             ) : (
               <p className="text-muted-foreground">Nenhum evento encontrado.</p>
             )}
-            {/* Controles de Paginação */}
-            {filteredEvents.length > 0 && (
+            {/* Controles de Paginação para Eventos */}
+            {filteredEvents.length > 0 && !isLoading && (
               <div className="flex justify-between items-center mt-4">
                 <Button
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage((prev) => prev - 1)}
+                  disabled={currentEventPage === 1}
+                  onClick={() => setCurrentEventPage((prev) => prev - 1)}
                   className="bg-primary hover:bg-primary/90 text-primary-foreground"
                 >
                   Anterior
                 </Button>
                 <span>
-                  Página {currentPage} de {totalPages}
+                  Página {currentEventPage} de {totalEventPages}
                 </span>
                 <Button
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage((prev) => prev + 1)}
+                  disabled={currentEventPage === totalEventPages}
+                  onClick={() => setCurrentEventPage((prev) => prev + 1)}
                   className="bg-primary hover:bg-primary/90 text-primary-foreground"
                 >
                   Próxima

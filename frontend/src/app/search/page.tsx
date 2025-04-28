@@ -27,8 +27,8 @@ import {
 } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { useDebounce } from "@/hooks/useDebounce";
-import { SearchFilters } from "@/components/SearchFilters";
-import { SkeletonResultItem } from "@/components/SkeletonResultItem";
+import { SearchFilters } from "@/components/search/SearchFilters";
+import { SkeletonResultItem } from "@/components/search/SkeletonResultItem";
 
 interface BaseResult {
   id: string;
