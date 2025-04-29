@@ -66,7 +66,7 @@ router.post("/login", async (req, res) => {
 
   // In-memory rate limiting: 5 attempts per email in 15 minutes
   const maxAttempts = 5;
-  const windowMs = 15 * 60 * 1000; // 15 minutes in milliseconds
+  const windowMs = 1 * 60 * 1000; // 15 minutes in milliseconds
   const now = Date.now();
 
   let attemptsData = loginAttempts.get(email) || { count: 0, startTime: now };
@@ -78,7 +78,7 @@ router.post("/login", async (req, res) => {
 
   if (attemptsData.count >= maxAttempts) {
     return res.status(429).json({
-      error: "Muitas tentativas de login. Tente novamente em 15 minutos.",
+      error: "Muitas tentativas. Tente novamente em 1 minuto.",
     });
   }
 
