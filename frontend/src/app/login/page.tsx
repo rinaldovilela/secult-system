@@ -43,7 +43,8 @@ export default function Login() {
     password?: string;
     general?: string;
   }>({});
-  const [timeRemaining, setTimeRemaining] = useState<number | null>(null); // Tempo restante em segundos
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null); // Tempo restante em milissegundos
+
   const emailInputRef = useRef<HTMLInputElement>(null);
 
   // Inicializar o formulário com valores padrão (email pode ser preenchido do localStorage)
@@ -85,14 +86,15 @@ export default function Login() {
 
     const interval = setInterval(() => {
       setTimeRemaining((prev) => {
-        if (prev === null || prev <= 1) {
+        if (prev === null || prev <= 100) {
+          // 100ms = 0.1s
           clearInterval(interval);
           setFormError((prev) => ({ ...prev, general: undefined }));
           return null;
         }
-        return prev - 1;
+        return prev - 100; // Decrementa 100ms a cada intervalo
       });
-    }, 1000);
+    }, 100); // Intervalo de 100ms
 
     return () => clearInterval(interval);
   }, [timeRemaining]);
@@ -160,12 +162,11 @@ export default function Login() {
           errorMessage = "Senha incorreta. Tente novamente.";
           fieldError.password = errorMessage;
         } else if (
-          serverError ===
-          "Muitas tentativas de login. Tente novamente em 1 minuto."
+          serverError === "Muitas tentativas. Tente novamente em 1 minuto."
         ) {
           errorMessage = serverError;
           fieldError.general = errorMessage;
-          setTimeRemaining(60); // 1 minuto em segundos
+          setTimeRemaining(60000); //  // 1 minuto
         } else {
           errorMessage = serverError || error.message;
           fieldError.general = errorMessage;
@@ -248,16 +249,17 @@ export default function Login() {
           Acesse o Secult System
         </h1>
         {formError.general && (
-          <div className="mb-4 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+          <div className="mb-4 p-3 bg-destructive/10 text-destructive rounded-md text-sm text-center">
             {formError.general}
             {timeRemaining !== null && timeRemaining > 0 && (
               <div className="mt-2">
                 <Progress
-                  value={(timeRemaining / 60) * 100} // 60 segundos é o total
+                  value={((60000 - (timeRemaining || 0)) / 60000) * 100} // 60000ms = 60s
                   className="w-full h-2"
                 />
                 <p className="text-xs mt-1 text-center">
-                  Tempo restante: {timeRemaining} segundos
+                  Tempo restante: {Math.ceil((timeRemaining || 0) / 1000)}{" "}
+                  segundos
                 </p>
               </div>
             )}
