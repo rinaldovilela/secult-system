@@ -1,7 +1,6 @@
-// app/login/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { useForm } from "react-hook-form";
@@ -27,26 +26,38 @@ import { Mail, Lock, Loader2 } from "lucide-react";
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(1, "Senha é obrigatória"),
+  rememberMe: z.boolean().optional(),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
 
-// Definir a variável global para a URL da API usando variável de ambiente
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export default function Login() {
   const router = useRouter();
   const { user, isAuthLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const emailInputRef = useRef<HTMLInputElement>(null);
 
-  // Configuração do formulário com react-hook-form e zod
+  // Inicializar o formulário com valores padrão (email pode ser preenchido do localStorage)
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: "",
+      email:
+        typeof window !== "undefined"
+          ? localStorage.getItem("rememberedEmail") || ""
+          : "",
       password: "",
+      rememberMe: false,
     },
   });
+
+  // Focar no campo de email ao carregar a página
+  useEffect(() => {
+    if (emailInputRef.current) {
+      emailInputRef.current.focus();
+    }
+  }, []);
 
   // Redirecionar se o usuário já estiver autenticado
   useEffect(() => {
@@ -61,11 +72,35 @@ export default function Login() {
     }
   }, [user, isAuthLoading, router]);
 
-  // Função de envio do formulário
+  // Função de envio do formulário com timeout e feedback de erro aprimorado
   const onSubmit = async (data: LoginForm) => {
     setIsSubmitting(true);
     try {
-      const response = await axios.post(`${BASE_URL}/api/login`, data);
+      const source = axios.CancelToken.source();
+      const timeout = setTimeout(() => {
+        source.cancel("Tempo de requisição excedido. Tente novamente.");
+      }, 10000); // Timeout de 10 segundos
+
+      const response = await axios.post(
+        `${BASE_URL}/api/login`,
+        {
+          email: data.email,
+          password: data.password,
+        },
+        {
+          cancelToken: source.token,
+        }
+      );
+
+      clearTimeout(timeout);
+
+      // Salvar e-mail se "Lembrar-me" estiver marcado
+      if (data.rememberMe) {
+        localStorage.setItem("rememberedEmail", data.email);
+      } else {
+        localStorage.removeItem("rememberedEmail");
+      }
+
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
       window.dispatchEvent(new Event("storage"));
@@ -75,27 +110,55 @@ export default function Login() {
       });
       router.push("/");
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const errorMessage =
-          error.response?.data?.error || error.message || "Erro desconhecido";
-        toast({
-          title: "Erro ao fazer login",
-          description: errorMessage,
-          variant: "destructive",
-        });
+      let errorMessage = "Erro desconhecido";
+      let action = null;
+
+      if (axios.isCancel(error)) {
+        errorMessage = error.message || "Erro desconhecido";
+      } else if (axios.isAxiosError(error)) {
+        const serverError = error.response?.data?.error;
+        if (serverError === "E-mail não cadastrado") {
+          errorMessage = "E-mail não cadastrado.";
+          action = (
+            <Link href="/users/register" className="underline">
+              Deseja se registrar?
+            </Link>
+          );
+        } else if (serverError === "Senha incorreta") {
+          errorMessage = "Senha incorreta. Tente novamente.";
+        } else if (
+          serverError ===
+          "Muitas tentativas de login. Tente novamente em 15 minutos."
+        ) {
+          errorMessage = serverError;
+        } else {
+          errorMessage = serverError || error.message;
+        }
       } else {
-        toast({
-          title: "Erro ao fazer login",
-          description: String(error),
-          variant: "destructive",
-        });
+        errorMessage = String(error);
       }
+
+      toast({
+        title: "Erro ao fazer login",
+        description: (
+          <div>
+            {errorMessage}
+            {action && <div className="mt-2">{action}</div>}
+          </div>
+        ),
+        variant: "destructive",
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Exibir esqueleto de carregamento enquanto verifica autenticação
+  // Debounce para evitar múltiplos envios
+  const handleSubmitWithDebounce = form.handleSubmit((data) => {
+    if (isSubmitting) return;
+    onSubmit(data);
+  });
+
   if (isAuthLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center py-8 px-4 sm:px-6 lg:px-8">
@@ -146,7 +209,7 @@ export default function Login() {
         </h1>
         <Form {...form}>
           <form
-            onSubmit={form.handleSubmit(onSubmit)}
+            onSubmit={handleSubmitWithDebounce}
             className="space-y-5"
             aria-label="Formulário de login"
           >
@@ -164,6 +227,7 @@ export default function Login() {
                       type="email"
                       placeholder="Digite seu email"
                       {...field}
+                      ref={emailInputRef}
                       disabled={isSubmitting}
                       className="w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
                       aria-describedby="email-error"
@@ -196,6 +260,27 @@ export default function Login() {
                     />
                   </FormControl>
                   <FormMessage id="password-error" />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="rememberMe"
+              render={({ field }) => (
+                <FormItem className="flex items-center space-x-2">
+                  <FormControl>
+                    <input
+                      type="checkbox"
+                      checked={field.value}
+                      onChange={field.onChange}
+                      disabled={isSubmitting}
+                      className="rounded border-muted-foreground/20 text-primary focus:ring-primary"
+                      aria-label="Lembrar meu e-mail"
+                    />
+                  </FormControl>
+                  <FormLabel className="text-sm text-muted-foreground">
+                    Lembrar meu e-mail
+                  </FormLabel>
                 </FormItem>
               )}
             />
