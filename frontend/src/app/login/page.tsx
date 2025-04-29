@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import Link from "next/link";
 import { Mail, Lock, Loader2 } from "lucide-react";
 
@@ -37,6 +38,12 @@ export default function Login() {
   const router = useRouter();
   const { user, isAuthLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<{
+    email?: string;
+    password?: string;
+    general?: string;
+  }>({});
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null); // Tempo restante em segundos
   const emailInputRef = useRef<HTMLInputElement>(null);
 
   // Inicializar o formulário com valores padrão (email pode ser preenchido do localStorage)
@@ -72,9 +79,30 @@ export default function Login() {
     }
   }, [user, isAuthLoading, router]);
 
+  // Temporizador para contagem regressiva
+  useEffect(() => {
+    if (timeRemaining === null || timeRemaining <= 0) return;
+
+    const interval = setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(interval);
+          setFormError((prev) => ({ ...prev, general: undefined }));
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timeRemaining]);
+
   // Função de envio do formulário com timeout e feedback de erro aprimorado
   const onSubmit = async (data: LoginForm) => {
     setIsSubmitting(true);
+    setFormError({}); // Resetar erros anteriores
+    setTimeRemaining(null); // Resetar contagem regressiva
+
     try {
       const source = axios.CancelToken.source();
       const timeout = setTimeout(() => {
@@ -112,13 +140,17 @@ export default function Login() {
     } catch (error) {
       let errorMessage = "Erro desconhecido";
       let action = null;
+      let fieldError: { email?: string; password?: string; general?: string } =
+        {};
 
       if (axios.isCancel(error)) {
         errorMessage = error.message || "Erro desconhecido";
+        fieldError.general = errorMessage;
       } else if (axios.isAxiosError(error)) {
         const serverError = error.response?.data?.error;
         if (serverError === "E-mail não cadastrado") {
           errorMessage = "E-mail não cadastrado.";
+          fieldError.email = errorMessage;
           action = (
             <Link href="/users/register" className="underline">
               Deseja se registrar?
@@ -126,18 +158,26 @@ export default function Login() {
           );
         } else if (serverError === "Senha incorreta") {
           errorMessage = "Senha incorreta. Tente novamente.";
+          fieldError.password = errorMessage;
         } else if (
           serverError ===
-          "Muitas tentativas de login. Tente novamente em 15 minutos."
+          "Muitas tentativas de login. Tente novamente em 1 minuto."
         ) {
           errorMessage = serverError;
+          fieldError.general = errorMessage;
+          setTimeRemaining(60); // 1 minuto em segundos
         } else {
           errorMessage = serverError || error.message;
+          fieldError.general = errorMessage;
         }
       } else {
         errorMessage = String(error);
+        fieldError.general = errorMessage;
       }
 
+      setFormError(fieldError);
+
+      // Exibir toast com a mensagem de erro
       toast({
         title: "Erro ao fazer login",
         description: (
@@ -207,6 +247,22 @@ export default function Login() {
         <h1 className="text-2xl sm:text-3xl font-bold mb-8 text-foreground text-center">
           Acesse o Secult System
         </h1>
+        {formError.general && (
+          <div className="mb-4 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+            {formError.general}
+            {timeRemaining !== null && timeRemaining > 0 && (
+              <div className="mt-2">
+                <Progress
+                  value={(timeRemaining / 60) * 100} // 60 segundos é o total
+                  className="w-full h-2"
+                />
+                <p className="text-xs mt-1 text-center">
+                  Tempo restante: {timeRemaining} segundos
+                </p>
+              </div>
+            )}
+          </div>
+        )}
         <Form {...form}>
           <form
             onSubmit={handleSubmitWithDebounce}
@@ -228,12 +284,19 @@ export default function Login() {
                       placeholder="Digite seu email"
                       {...field}
                       ref={emailInputRef}
-                      disabled={isSubmitting}
-                      className="w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                      disabled={isSubmitting || timeRemaining !== null}
+                      className={`w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300 ${
+                        formError.email ? "border-destructive" : ""
+                      }`}
                       aria-describedby="email-error"
                     />
                   </FormControl>
                   <FormMessage id="email-error" />
+                  {formError.email && (
+                    <p className="text-sm text-destructive mt-1">
+                      {formError.email}
+                    </p>
+                  )}
                 </FormItem>
               )}
             />
@@ -254,12 +317,19 @@ export default function Login() {
                       type="password"
                       placeholder="Digite sua senha"
                       {...field}
-                      disabled={isSubmitting}
-                      className="w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
+                      disabled={isSubmitting || timeRemaining !== null}
+                      className={`w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300 ${
+                        formError.password ? "border-destructive" : ""
+                      }`}
                       aria-describedby="password-error"
                     />
                   </FormControl>
                   <FormMessage id="password-error" />
+                  {formError.password && (
+                    <p className="text-sm text-destructive mt-1">
+                      {formError.password}
+                    </p>
+                  )}
                 </FormItem>
               )}
             />
@@ -273,7 +343,7 @@ export default function Login() {
                       type="checkbox"
                       checked={field.value}
                       onChange={field.onChange}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || timeRemaining !== null}
                       className="rounded border-muted-foreground/20 text-primary focus:ring-primary"
                       aria-label="Lembrar meu e-mail"
                     />
@@ -306,8 +376,8 @@ export default function Login() {
             >
               <Button
                 type="submit"
-                className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground shadow-md transition-all duration-300 active:scale-95"
-                disabled={isSubmitting}
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground transition-all duration-300 active:scale-95"
+                disabled={isSubmitting || timeRemaining !== null}
                 aria-label="Entrar no sistema"
               >
                 {isSubmitting ? (
@@ -323,8 +393,8 @@ export default function Login() {
                 <Button
                   type="button"
                   variant="outline"
-                  className="w-full border-muted-foreground/20 text-muted-foreground hover:bg-muted/20 shadow-sm transition-all duration-300 active:scale-95"
-                  disabled={isSubmitting}
+                  className="w-full border-muted-foreground/20 hover:bg-muted/20 text-muted-foreground transition-all duration-300 active:scale-95"
+                  disabled={isSubmitting || timeRemaining !== null}
                   aria-label="Cancelar e voltar para a página inicial"
                 >
                   Cancelar
