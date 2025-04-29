@@ -3,13 +3,13 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const db = require("../config/db");
 const { authenticateToken, authorizeRole } = require("../middleware/auth");
-const cpfCnpjValidator = require("cpf-cnpj-validator"); // Para validação de CPF/CNPJ
+const cpfCnpjValidator = require("cpf-cnpj-validator");
 const { cpf, cnpj } = cpfCnpjValidator;
 
 const router = express.Router();
 
-// Registro de usuário (admin ou secretary)
-const { v1: uuidv1 } = require("uuid");
+// In-memory storage for login attempts (not persistent across restarts)
+const loginAttempts = new Map();
 
 router.post("/register", authenticateToken, async (req, res) => {
   const { name, email, password, role, cpf_cnpj } = req.body;
@@ -34,7 +34,7 @@ router.post("/register", authenticateToken, async (req, res) => {
 
   try {
     const [existingUser] = await db.query(
-      "SELECT * FROM users WHERE email = ?",
+      "SELECT id FROM users WHERE email = ?",
       [email]
     );
     if (existingUser.length > 0) {
@@ -42,7 +42,7 @@ router.post("/register", authenticateToken, async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const userId = uuidv1(); // Gera um UUID para o novo usuário
+    const userId = uuidv1();
     await db.query(
       "INSERT INTO users (id, name, email, password, role, cpf_cnpj, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())",
       [userId, name, email, hashedPassword, role, cpf_cnpj || null]
@@ -51,7 +51,9 @@ router.post("/register", authenticateToken, async (req, res) => {
     res.status(201).json({ id: userId, name, email, role });
   } catch (error) {
     console.error("Erro ao registrar usuário:", error);
-    res.status(500).json({ error: "Erro ao registrar usuário" });
+    res
+      .status(500)
+      .json({ error: "Erro interno do servidor ao registrar usuário" });
   }
 });
 
@@ -62,19 +64,47 @@ router.post("/login", async (req, res) => {
     return res.status(400).json({ error: "Email e senha são obrigatórios" });
   }
 
+  // In-memory rate limiting: 5 attempts per email in 15 minutes
+  const maxAttempts = 5;
+  const windowMs = 15 * 60 * 1000; // 15 minutes in milliseconds
+  const now = Date.now();
+
+  let attemptsData = loginAttempts.get(email) || { count: 0, startTime: now };
+
+  // Reset attempts if the window has expired
+  if (now - attemptsData.startTime > windowMs) {
+    attemptsData = { count: 0, startTime: now };
+  }
+
+  if (attemptsData.count >= maxAttempts) {
+    return res.status(429).json({
+      error: "Muitas tentativas de login. Tente novamente em 15 minutos.",
+    });
+  }
+
   try {
-    const [users] = await db.query("SELECT * FROM users WHERE email = ?", [
-      email,
-    ]);
+    const [users] = await db.query(
+      "SELECT id, name, email, password, role FROM users WHERE email = ?",
+      [email]
+    );
     if (users.length === 0) {
-      return res.status(401).json({ error: "Credenciais inválidas" });
+      // Increment attempts
+      attemptsData.count += 1;
+      loginAttempts.set(email, attemptsData);
+      return res.status(404).json({ error: "E-mail não cadastrado" });
     }
 
     const user = users[0];
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      return res.status(401).json({ error: "Credenciais inválidas" });
+      // Increment attempts
+      attemptsData.count += 1;
+      loginAttempts.set(email, attemptsData);
+      return res.status(401).json({ error: "Senha incorreta" });
     }
+
+    // Reset attempts on successful login
+    loginAttempts.delete(email);
 
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
@@ -85,7 +115,7 @@ router.post("/login", async (req, res) => {
     res.status(200).json({
       token,
       user: {
-        id: user.id, // Agora é uma string (UUID)
+        id: user.id,
         name: user.name,
         email: user.email,
         role: user.role,
@@ -93,7 +123,7 @@ router.post("/login", async (req, res) => {
     });
   } catch (error) {
     console.error("Erro ao fazer login:", error);
-    res.status(500).json({ error: "Erro ao fazer login" });
+    res.status(500).json({ error: "Erro interno do servidor ao fazer login" });
   }
 });
 
