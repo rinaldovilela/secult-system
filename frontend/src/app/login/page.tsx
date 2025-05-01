@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import Link from "next/link";
-import { Mail, Lock, Loader2 } from "lucide-react";
+import { Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
 
 // Schema de validação do formulário
 const loginSchema = z.object({
@@ -44,8 +44,8 @@ export default function Login() {
     general?: string;
   }>({});
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null); // Tempo restante em milissegundos
-
   const emailInputRef = useRef<HTMLInputElement>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Inicializar o formulário com valores padrão (email pode ser preenchido do localStorage)
   const form = useForm<LoginForm>({
@@ -317,45 +317,41 @@ export default function Login() {
                     <Lock className="w-5 h-5 text-primary" />
                     Senha
                   </FormLabel>
-                  <FormControl>
-                    <Input
-                      type="password"
-                      placeholder="Digite sua senha"
-                      {...field}
+                  <div className="relative">
+                    <FormControl>
+                      <Input
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Digite sua senha"
+                        {...field}
+                        disabled={isSubmitting || timeRemaining !== null}
+                        className={`w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300 ${
+                          formError.password ? "border-destructive" : ""
+                        }`}
+                        aria-describedby="password-error"
+                      />
+                    </FormControl>
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted-foreground hover:text-primary transition-colors"
+                      onClick={() => setShowPassword(!showPassword)}
                       disabled={isSubmitting || timeRemaining !== null}
-                      className={`w-full rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300 ${
-                        formError.password ? "border-destructive" : ""
-                      }`}
-                      aria-describedby="password-error"
-                    />
-                  </FormControl>
+                      aria-label={
+                        showPassword ? "Ocultar senha" : "Mostrar senha"
+                      }
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-5 w-5" />
+                      ) : (
+                        <Eye className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
                   <FormMessage id="password-error" />
                   {formError.password && (
                     <p className="text-sm text-destructive mt-1">
                       {formError.password}
                     </p>
                   )}
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="rememberMe"
-              render={({ field }) => (
-                <FormItem className="flex items-center space-x-2">
-                  <FormControl>
-                    <input
-                      type="checkbox"
-                      checked={field.value}
-                      onChange={field.onChange}
-                      disabled={isSubmitting || timeRemaining !== null}
-                      className="rounded border-muted-foreground/20 text-primary focus:ring-primary"
-                      aria-label="Lembrar meu e-mail"
-                    />
-                  </FormControl>
-                  <FormLabel className="text-sm text-muted-foreground">
-                    Lembrar meu e-mail
-                  </FormLabel>
                 </FormItem>
               )}
             />
