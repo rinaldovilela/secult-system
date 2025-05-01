@@ -109,7 +109,7 @@ export default function Login() {
       const source = axios.CancelToken.source();
       const timeout = setTimeout(() => {
         source.cancel("Tempo de requisição excedido. Tente novamente.");
-      }, 10000); // Timeout de 10 segundos
+      }, 30000); // Timeout de 10 segundos
 
       const response = await axios.post(
         `${BASE_URL}/api/login`,
@@ -142,8 +142,11 @@ export default function Login() {
     } catch (error) {
       let errorMessage = "Erro desconhecido";
       let action = null;
-      let fieldError: { email?: string; password?: string; general?: string } =
-        {};
+      const fieldError: {
+        email?: string;
+        password?: string;
+        general?: string;
+      } = {};
 
       if (axios.isCancel(error)) {
         errorMessage = error.message || "Erro desconhecido";
@@ -166,7 +169,7 @@ export default function Login() {
         ) {
           errorMessage = serverError;
           fieldError.general = errorMessage;
-          setTimeRemaining(60000); //  // 1 minuto
+          setTimeRemaining(60000); // 1 minuto
         } else {
           errorMessage = serverError || error.message;
           fieldError.general = errorMessage;
@@ -356,14 +359,7 @@ export default function Login() {
                 </FormItem>
               )}
             />
-            <div className="flex justify-between items-center text-sm">
-              <Link
-                href="/forgot-password"
-                className="text-primary hover:underline hover:text-primary/80 transition-all duration-200"
-                aria-label="Esqueceu sua senha?"
-              >
-                Esqueceu sua senha?
-              </Link>
+            <div className="flex justify-end items-center text-sm">
               <Link
                 href="/users/register"
                 className="text-primary hover:underline hover:text-primary/80 transition-all duration-200"

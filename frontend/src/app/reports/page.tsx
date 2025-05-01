@@ -260,12 +260,14 @@ export default function Reports() {
 
     if (sortColumn) {
       filtered.sort((a, b) => {
-        let valueA: any, valueB: any;
+        let valueA: string | number;
+        let valueB: string | number;
+
         if (sortColumn === "date") {
           valueA = new Date(a.date).getTime();
           valueB = new Date(b.date).getTime();
         } else if (sortColumn === "artists") {
-          // Ordenar pela soma dos valores pagos
+          // Calcular o valor total pago por artista
           valueA = a.artists.reduce((sum, artist) => sum + artist.amount, 0);
           valueB = b.artists.reduce((sum, artist) => sum + artist.amount, 0);
         } else {
@@ -308,7 +310,9 @@ export default function Reports() {
 
     if (artistSortColumn) {
       filtered.sort((a, b) => {
-        let valueA: any, valueB: any;
+        let valueA: string | number;
+        let valueB: string | number;
+
         if (artistSortColumn === "birth_date") {
           valueA = a.birth_date ? new Date(a.birth_date).getTime() : 0;
           valueB = b.birth_date ? new Date(b.birth_date).getTime() : 0;
