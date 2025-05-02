@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
-import { useForm } from "react-hook-form";
+import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import axios from "axios";
 import { toast } from "@/components/ui/use-toast";
@@ -18,6 +18,11 @@ import {
   Calendar,
   Image as ImageIcon,
   ArrowLeft,
+  Copy,
+  RotateCw,
+  Eye,
+  X,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +43,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Separator } from "@/components/ui/separator";
 import Loading from "@/components/ui/loading";
 import { getToken } from "@/lib/auth";
 import { z } from "zod";
@@ -54,12 +60,13 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardHeader } from "@/components/ui/card";
 
-// Schema de validação para edição (sem campo de senha)
 const editUserSchema = z.object({
   name: z.string().min(2, "O nome deve ter pelo menos 2 caracteres"),
   email: z.string().email("Email inválido"),
@@ -92,10 +99,6 @@ const editUserSchema = z.object({
     account_number: z.string().min(1, "Número da conta é obrigatório"),
     pix_key: z.string().optional(),
   }),
-  profilePicture: z.instanceof(File).optional(),
-  portfolio: z.instanceof(File).optional(),
-  video: z.instanceof(File).optional(),
-  relatedFiles: z.instanceof(File).optional(),
 });
 
 type EditUserFormData = z.infer<typeof editUserSchema>;
@@ -136,6 +139,7 @@ export default function EditUserContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const id = searchParams.get("id");
+  const defaultTab = searchParams.get("section") || "personal";
 
   const { user, isAuthLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
@@ -149,8 +153,20 @@ export default function EditUserContent() {
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [uploadDialog, setUploadDialog] = useState<{
+    type: "video" | "profile_picture" | "portfolio" | "related_files";
+    file: File | null;
+    preview: string | null;
+    rotation: number;
+  } | null>(null);
+  const [viewDialog, setViewDialog] = useState<{
+    type: string;
+    data: string | null;
+    isLoading: boolean;
+    error: string | null;
+  } | null>(null);
+  const [shouldRedirect, setShouldRedirect] = useState<string | null>(null);
 
-  // Definir a variável global para a URL da API usando variável de ambiente
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
   const form = useForm<EditUserFormData>({
@@ -182,40 +198,36 @@ export default function EditUserContent() {
     },
   });
 
-  // Carregar dados do usuário
+  const originalValues = useState<EditUserFormData | null>(null);
+
   useEffect(() => {
     if (isAuthLoading) return;
 
-    if (!user || !["admin", "secretary"].includes(user.role)) {
-      router.push("/login");
-      return;
-    }
-
-    if (!id) {
-      toast({
-        title: "Erro",
-        description: "ID do usuário não fornecido.",
-        variant: "destructive",
-      });
-      router.push("/search");
-      return;
-    }
-
     const fetchUserData = async () => {
+      if (!id) {
+        setShouldRedirect("/search");
+        return;
+      }
+
+      if (!user || !["admin", "secretary"].includes(user.role)) {
+        setShouldRedirect("/login");
+        return;
+      }
+
       try {
         const token = getToken();
         if (!token) {
-          throw new Error("Token não encontrado. Faça login novamente.");
+          setShouldRedirect("/login");
+          return;
         }
-        // Use BASE_URL for axios request
+
+        setIsLoading(true);
         const response = await axios.get(`${BASE_URL}/api/users/${id}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
         const userData = response.data;
-
-        // Fill form with user data
-        form.reset({
+        const formattedData = {
           name: userData.name,
           email: userData.email,
           role: userData.role,
@@ -244,9 +256,11 @@ export default function EditUserContent() {
             account_number: userData.bank_details?.account_number || "",
             pix_key: userData.bank_details?.pix_key || "",
           },
-        });
+        };
 
-        // Set profile picture preview if exists
+        form.reset(formattedData);
+        originalValues[1](formattedData);
+
         if (userData.profile_picture) {
           setProfilePreview(
             `data:image/jpeg;base64,${userData.profile_picture}`
@@ -261,16 +275,22 @@ export default function EditUserContent() {
           description: errorMessage,
           variant: "destructive",
         });
-        router.push(`/users/${id}`);
+        setShouldRedirect(`/users/${id}`);
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchUserData();
-  }, [id, user, isAuthLoading, router, form, BASE_URL]);
+  }, [id, user, isAuthLoading, form]);
 
-  // Função para formatar a data para o input
+  useEffect(() => {
+    if (shouldRedirect) {
+      router.push(shouldRedirect);
+      setShouldRedirect(null);
+    }
+  }, [shouldRedirect, router]);
+
   function formatDateForInput(dateString: string) {
     const date = new Date(dateString);
     return date
@@ -282,8 +302,6 @@ export default function EditUserContent() {
       .split("/")
       .join("/");
   }
-
-  const role = form.watch("role");
 
   const fetchAddressByCep = async (cep: string) => {
     const cleanCep = cep.replace(/\D/g, "");
@@ -328,14 +346,13 @@ export default function EditUserContent() {
       });
     } catch (error) {
       setCepStatus("error");
-      const errorMessage = axios.isAxiosError(error)
-        ? error.response?.data?.message || error.message
-        : error instanceof Error
-        ? error.message
-        : "Ocorreu um erro inesperado ao buscar o CEP";
       toast({
         title: "Erro ao buscar CEP",
-        description: errorMessage,
+        description: axios.isAxiosError(error)
+          ? error.response?.data?.message || error.message
+          : error instanceof Error
+          ? error.message
+          : "Ocorreu um erro inesperado ao buscar o CEP",
         variant: "destructive",
       });
     } finally {
@@ -343,58 +360,197 @@ export default function EditUserContent() {
     }
   };
 
+  const validateFileType = (
+    file: File,
+    type: "profile_picture" | "portfolio" | "video" | "related_files"
+  ) => {
+    const allowedTypes = {
+      profile_picture: ["image/jpeg", "image/png", "image/jpg", "image/gif"],
+      portfolio: ["application/pdf"],
+      video: ["video/mp4", "video/webm", "video/ogg"],
+      related_files: [] as string[], // Aceita qualquer tipo
+    };
+
+    if (allowedTypes[type].length === 0) return true; // related_files aceita qualquer tipo
+    return allowedTypes[type].includes(file.type);
+  };
+
   const handleFileChange = (
-    field: keyof EditUserFormData,
-    e: React.ChangeEvent<HTMLInputElement>,
-    setPreview?: (value: string | null) => void
+    type: "video" | "profile_picture" | "portfolio" | "related_files",
+    e: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > MAX_FILE_SIZE) {
-        form.setError(field, {
-          type: "manual",
-          message: `O arquivo é muito grande. O limite é ${
+        toast({
+          title: "❌ Arquivo muito grande",
+          description: `O arquivo é muito grande. O limite é ${
             MAX_FILE_SIZE / (1024 * 1024)
           }MB.`,
+          variant: "destructive",
         });
         return;
       }
 
-      form.setValue(field, file);
-      if (setPreview) {
-        const reader = new FileReader();
-        reader.onloadend = () => setPreview(reader.result as string);
-        reader.readAsDataURL(file);
+      if (!validateFileType(file, type)) {
+        toast({
+          title: "❌ Tipo de arquivo inválido",
+          description: `O arquivo deve ser do tipo: ${
+            type === "profile_picture"
+              ? "JPEG, PNG, JPG, GIF"
+              : type === "portfolio"
+              ? "PDF"
+              : "MP4, WEBM, OGG"
+          }.`,
+          variant: "destructive",
+        });
+        return;
       }
-    } else {
-      form.setValue(field, undefined);
-      if (setPreview) setPreview(null);
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setUploadDialog({
+          type,
+          file,
+          preview: reader.result as string,
+          rotation: 0,
+        });
+      };
+      reader.readAsDataURL(file);
     }
   };
 
-  const onSubmit = async (values: EditUserFormData) => {
+  const handleUploadFile = async () => {
+    if (!uploadDialog?.file) return;
+
     setIsSubmitting(true);
     try {
       const token = getToken();
       if (!token) {
-        toast({
-          title: "❌ Token não encontrado",
-          description: "Faça login novamente.",
-          variant: "destructive",
-        });
-        router.push("/login");
-        return;
+        throw new Error("Token não encontrado. Faça login novamente.");
+      }
+
+      const formData = new FormData();
+      formData.append("file", uploadDialog.file);
+
+      await axios.put(
+        `${BASE_URL}/api/users/${id}/file/${uploadDialog.type}`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      if (uploadDialog.type === "profile_picture") {
+        setProfilePreview(uploadDialog.preview);
+      }
+
+      toast({
+        title: "✅ Arquivo enviado com sucesso!",
+        description: `${uploadDialog.type} atualizado.`,
+      });
+
+      setUploadDialog(null);
+    } catch (error) {
+      const errorMessage = axios.isAxiosError(error)
+        ? error.response?.data?.error || error.message
+        : "Ocorreu um erro inesperado";
+      toast({
+        title: "❌ Erro ao enviar arquivo",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleViewFile = async (type: string) => {
+    setViewDialog({ type, data: null, isLoading: true, error: null });
+    try {
+      const token = getToken();
+      if (!token) {
+        throw new Error("Token não encontrado. Faça login novamente.");
+      }
+
+      const response = await axios.get(
+        `${BASE_URL}/api/users/${id}/file/${type}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      const base64Data = response.data.file;
+      let dataUrl: string;
+
+      if (type === "profile_picture") {
+        dataUrl = `data:image/jpeg;base64,${base64Data}`;
+      } else if (type === "portfolio") {
+        dataUrl = `data:application/pdf;base64,${base64Data}`;
+      } else if (type === "video") {
+        dataUrl = `data:video/mp4;base64,${base64Data}`;
+      } else {
+        dataUrl = `data:application/octet-stream;base64,${base64Data}`;
+      }
+
+      setViewDialog(
+        (prev) => prev && { ...prev, data: dataUrl, isLoading: false }
+      );
+    } catch (error) {
+      const errorMessage = axios.isAxiosError(error)
+        ? error.response?.data?.error || error.message
+        : "Ocorreu um erro inesperado";
+      setViewDialog(
+        (prev) =>
+          prev && {
+            ...prev,
+            isLoading: false,
+            error: errorMessage,
+          }
+      );
+      toast({
+        title: `❌ Erro ao visualizar ${type}`,
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRotateImage = () => {
+    if (!uploadDialog) return;
+    setUploadDialog({
+      ...uploadDialog,
+      rotation: (uploadDialog.rotation + 90) % 360,
+    });
+  };
+
+  const handleClearFile = (type: string) => {
+    if (type === "profile_picture") {
+      setProfilePreview(null);
+      // Opcional: Enviar uma requisição para o backend para limpar o arquivo
+    }
+    toast({
+      title: "✅ Arquivo removido",
+      description: `${type} foi removido. Salve para confirmar a alteração.`,
+    });
+  };
+
+  const onSubmitPersonal = async (values: EditUserFormData) => {
+    setIsSubmitting(true);
+    try {
+      const token = getToken();
+      if (!token) {
+        throw new Error("Token não encontrado. Faça login novamente.");
       }
 
       const formDataToSend = new FormData();
-
-      // Dados básicos
       formDataToSend.append("name", values.name);
       formDataToSend.append("email", values.email);
       formDataToSend.append("role", values.role);
       formDataToSend.append("cpf_cnpj", values.cpfCnpj.replace(/\D/g, ""));
-
-      // Campos opcionais
       if (values.bio) formDataToSend.append("bio", values.bio);
       if (values.areaOfExpertise)
         formDataToSend.append("area_of_expertise", values.areaOfExpertise);
@@ -405,7 +561,42 @@ export default function EditUserContent() {
         );
       }
 
-      // Endereço
+      await axios.put(`${BASE_URL}/api/users/${id}`, formDataToSend, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      toast({
+        title: "✅ Dados pessoais atualizados com sucesso!",
+        description: "As alterações foram salvas.",
+      });
+
+      originalValues[1](form.getValues());
+    } catch (error) {
+      const errorMessage = axios.isAxiosError(error)
+        ? error.response?.data?.error || error.message
+        : "Ocorreu um erro inesperado";
+      toast({
+        title: "❌ Erro ao atualizar dados pessoais",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const onSubmitAddress = async (values: EditUserFormData) => {
+    setIsSubmitting(true);
+    try {
+      const token = getToken();
+      if (!token) {
+        throw new Error("Token não encontrado. Faça login novamente.");
+      }
+
+      const formDataToSend = new FormData();
       const address = {
         cep: values.address.cep.replace(/\D/g, ""),
         logradouro: values.address.logradouro,
@@ -417,7 +608,42 @@ export default function EditUserContent() {
       };
       formDataToSend.append("address", JSON.stringify(address));
 
-      // Dados bancários
+      await axios.put(`${BASE_URL}/api/users/${id}`, formDataToSend, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      toast({
+        title: "✅ Endereço atualizado com sucesso!",
+        description: "As alterações foram salvas.",
+      });
+
+      originalValues[1](form.getValues());
+    } catch (error) {
+      const errorMessage = axios.isAxiosError(error)
+        ? error.response?.data?.error || error.message
+        : "Ocorreu um erro inesperado";
+      toast({
+        title: "❌ Erro ao atualizar endereço",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const onSubmitBank = async (values: EditUserFormData) => {
+    setIsSubmitting(true);
+    try {
+      const token = getToken();
+      if (!token) {
+        throw new Error("Token não encontrado. Faça login novamente.");
+      }
+
+      const formDataToSend = new FormData();
       const bankDetails = {
         bank_name: values.bankDetails.bank_name,
         account_type: values.bankDetails.account_type,
@@ -427,16 +653,6 @@ export default function EditUserContent() {
       };
       formDataToSend.append("bank_details", JSON.stringify(bankDetails));
 
-      // Arquivos
-      if (values.profilePicture)
-        formDataToSend.append("profile_picture", values.profilePicture);
-      if (values.portfolio)
-        formDataToSend.append("portfolio", values.portfolio);
-      if (values.video) formDataToSend.append("video", values.video);
-      if (values.relatedFiles)
-        formDataToSend.append("related_files", values.relatedFiles);
-
-      // Usar BASE_URL para a requisição axios
       await axios.put(`${BASE_URL}/api/users/${id}`, formDataToSend, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -445,23 +661,28 @@ export default function EditUserContent() {
       });
 
       toast({
-        title: "✅ Usuário atualizado com sucesso!",
+        title: "✅ Dados bancários atualizados com sucesso!",
         description: "As alterações foram salvas.",
       });
-      router.push(`/users/${id}`);
+
+      originalValues[1](form.getValues());
     } catch (error) {
       const errorMessage = axios.isAxiosError(error)
         ? error.response?.data?.error || error.message
-        : error instanceof Error
-        ? error.message
         : "Ocorreu um erro inesperado";
       toast({
-        title: "❌ Erro ao atualizar usuário",
+        title: "❌ Erro ao atualizar dados bancários",
         description: errorMessage,
         variant: "destructive",
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleCancel = () => {
+    if (originalValues[0]) {
+      form.reset(originalValues[0]);
     }
   };
 
@@ -471,7 +692,6 @@ export default function EditUserContent() {
       if (!token) {
         throw new Error("Token não encontrado. Faça login novamente.");
       }
-      // Usar BASE_URL para a requisição axios
       await axios.delete(`${BASE_URL}/api/users/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -500,7 +720,6 @@ export default function EditUserContent() {
       if (!token) {
         throw new Error("Token não encontrado. Faça login novamente.");
       }
-      // Usar BASE_URL para a requisição axios
       await axios.put(
         `${BASE_URL}/api/users/${id}/password`,
         { new_password: newPassword },
@@ -522,440 +741,213 @@ export default function EditUserContent() {
     }
   };
 
-  if (isAuthLoading || isLoading) return <Loading />;
-  if (!user || !["admin", "secretary"].includes(user.role)) {
-    router.push("/login");
-    return null;
-  }
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      toast({
+        title: "✅ Copiado!",
+        description: "ID copiado para a área de transferência.",
+      });
+    });
+  };
+
+  if (isLoading) return <Loading />;
 
   return (
-    <div className="min-h-screen bg-gray-100 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto">
-        <div className="bg-white shadow-lg rounded-lg p-6 sm:p-8">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-              Editar {role === "artist" ? "Artista" : "Grupo Cultural"}
-            </h1>
-            <Button
-              variant="outline"
-              onClick={() => router.push(`/users/${id}`)}
-              className="flex items-center gap-2"
-              aria-label="Voltar para os detalhes do usuário"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Voltar
-            </Button>
-          </div>
-
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {/* Dados Pessoais */}
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold">Dados Pessoais</h2>
-
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <User className="w-5 h-5 text-indigo-600" />
-                        Nome Completo *
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Nome completo"
-                          {...field}
-                          disabled={isSubmitting}
-                          aria-label="Nome completo do usuário"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <Mail className="w-5 h-5 text-indigo-600" />
-                        Email *
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="email"
-                          placeholder="seu@email.com"
-                          {...field}
-                          disabled={isSubmitting}
-                          aria-label="Email do usuário"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="role"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <User className="w-5 h-5 text-indigo-600" />
-                        Tipo de Cadastro *
-                      </FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                        disabled={isSubmitting}
-                      >
-                        <FormControl>
-                          <SelectTrigger aria-label="Selecione o tipo de cadastro">
-                            <SelectValue placeholder="Selecione o tipo" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="artist">
-                            Artista Individual
-                          </SelectItem>
-                          <SelectItem value="group">Grupo Cultural</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="cpfCnpj"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        {role === "artist" ? "CPF *" : "CNPJ *"}
-                      </FormLabel>
-                      <FormControl>
-                        <MaskedInput
-                          mask={
-                            role === "artist"
-                              ? "000.000.000-00"
-                              : "00.000.000/0000-00"
-                          }
-                          placeholder={
-                            role === "artist"
-                              ? "000.000.000-00"
-                              : "00.000.000/0000-00"
-                          }
-                          {...field}
-                          onAccept={(value) => field.onChange(value)}
-                          disabled={isSubmitting}
-                          aria-label={
-                            role === "artist"
-                              ? "CPF do artista"
-                              : "CNPJ do grupo cultural"
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="birthDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <Calendar className="w-5 h-5 text-indigo-600" />
-                        Data de Nascimento
-                      </FormLabel>
-                      <FormControl>
-                        <MaskedInput
-                          mask="00/00/0000"
-                          placeholder="DD/MM/YYYY"
-                          {...field}
-                          onAccept={(value) => field.onChange(value)}
-                          disabled={isSubmitting}
-                          className="pl-10"
-                          aria-label="Data de nascimento"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="bio"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Biografia</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          rows={3}
-                          placeholder="Conte sobre o artista/grupo..."
-                          {...field}
-                          value={field.value || ""}
-                          disabled={isSubmitting}
-                          aria-label="Biografia do artista ou grupo"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="areaOfExpertise"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Área de Atuação</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Ex: Música, Teatro, Dança"
-                          {...field}
-                          value={field.value || ""}
-                          disabled={isSubmitting}
-                          aria-label="Área de atuação"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="container mx-auto py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
+        {/* Cabeçalho */}
+        <Card className="bg-muted shadow-sm rounded-lg animate-in fade-in duration-500">
+          <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex items-center gap-4">
+              <div className="h-16 w-16 relative">
+                {profilePreview ? (
+                  <Image
+                    src={profilePreview}
+                    alt="Foto de perfil"
+                    fill
+                    className="object-cover rounded-full"
+                  />
+                ) : (
+                  <div className="h-16 w-16 bg-muted-foreground/20 rounded-full flex items-center justify-center">
+                    <User className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                )}
               </div>
-
-              {/* Endereço */}
-              <div className="bg-gray-50 p-6 rounded-lg space-y-4">
-                <h2 className="text-xl font-semibold">Endereço</h2>
-
-                <FormField
-                  control={form.control}
-                  name="address.cep"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <MapPin className="w-5 h-5 text-indigo-600" />
-                        CEP *
-                      </FormLabel>
-                      <FormControl>
-                        <MaskedInput
-                          mask="00000-000"
-                          placeholder="00000-000"
-                          defaultValue={field.value}
-                          onAccept={(value) => {
-                            field.onChange(value);
-                            const cleanValue = value.replace(/\D/g, "");
-                            if (cleanValue.length === 8) {
-                              fetchAddressByCep(value);
-                            }
-                          }}
-                          onBlur={() => form.trigger("address.cep")}
-                          disabled={isLoadingCep || isSubmitting}
-                          className="pl-10"
-                          aria-label="CEP do endereço"
-                        />
-                      </FormControl>
-                      <div className="text-sm mt-1">
-                        {cepStatus === "loading" && (
-                          <p className="text-gray-500">Buscando endereço...</p>
-                        )}
-                        {cepStatus === "success" && (
-                          <p className="text-green-600">
-                            Endereço preenchido com sucesso!
-                          </p>
-                        )}
-                        {cepStatus === "error" && (
-                          <p className="text-red-600">
-                            Não foi possível buscar o endereço.
-                          </p>
-                        )}
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="address.logradouro"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Logradouro *</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            disabled={isSubmitting}
-                            aria-label="Logradouro do endereço"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="address.numero"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Número *</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            disabled={isSubmitting}
-                            aria-label="Número do endereço"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
+                  {form.getValues("name")}
+                </h1>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>ID: {id}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyToClipboard(id!)}
+                    className="hover:bg-muted/20 transition-all duration-300"
+                    aria-label="Copiar ID do usuário"
+                  >
+                    <Copy className="w-4 h-4 text-primary" />
+                  </Button>
                 </div>
-
-                <FormField
-                  control={form.control}
-                  name="address.complemento"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Complemento</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          value={field.value || ""}
-                          disabled={isSubmitting}
-                          aria-label="Complemento do endereço"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="address.bairro"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Bairro *</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            disabled={isSubmitting}
-                            aria-label="Bairro do endereço"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="address.cidade"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Cidade *</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            disabled={isSubmitting}
-                            aria-label="Cidade do endereço"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="address.estado"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Estado (UF) *</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
-                        disabled={isSubmitting}
-                      >
-                        <FormControl>
-                          <SelectTrigger aria-label="Selecione o estado">
-                            <SelectValue placeholder="Selecione o estado" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {BRAZILIAN_STATES.map((uf) => (
-                            <SelectItem key={uf} value={uf}>
-                              {uf}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <span
+                  className={`text-sm px-2 py-1 rounded-full mt-1 ${
+                    form.getValues("role") === "artist"
+                      ? "bg-green-100 text-green-800"
+                      : "bg-blue-100 text-blue-800"
+                  }`}
+                >
+                  {form.getValues("role") === "artist" ? "Artista" : "Grupo"}
+                </span>
               </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => router.push(`/users/${id}`)}
+                variant="outline"
+                className="border-muted-foreground/20 hover:bg-muted/20 text-muted-foreground transition-all duration-300 active:scale-95"
+                aria-label="Voltar para detalhes do usuário"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2 text-primary" />
+                Voltar
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setShowPasswordDialog(true)}
+                className="bg-primary/10 hover:bg-primary/20 text-primary transition-all duration-300 active:scale-95"
+                aria-label="Alterar senha do usuário"
+              >
+                Alterar Senha
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => setShowDeleteDialog(true)}
+                className="bg-red-600 hover:bg-red-700 text-white transition-all duration-300 active:scale-95"
+                aria-label="Deletar usuário"
+              >
+                Deletar Usuário
+              </Button>
+            </div>
+          </CardHeader>
+        </Card>
 
-              {/* Dados Bancários */}
-              <div className="bg-gray-50 p-6 rounded-lg space-y-4">
-                <h2 className="text-xl font-semibold">Dados Bancários</h2>
+        {/* Abas */}
+        <FormProvider {...form}>
+          <Card className="mt-6 bg-muted shadow-sm rounded-lg animate-in fade-in duration-500">
+            <Tabs defaultValue={defaultTab} className="w-full">
+              <TabsList className="grid grid-cols-2 sm:grid-cols-5 gap-2 p-2 border-b bg-background overflow-x-auto">
+                <TabsTrigger
+                  value="personal"
+                  className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary transition-all duration-300 text-sm py-2"
+                >
+                  Dados pessoais
+                </TabsTrigger>
+                <TabsTrigger
+                  value="portfolio"
+                  className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary transition-all duration-300 text-sm py-2"
+                >
+                  Portfólio
+                </TabsTrigger>
+                <TabsTrigger
+                  value="address"
+                  className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary transition-all duration-300 text-sm py-2"
+                >
+                  Endereço
+                </TabsTrigger>
+                <TabsTrigger
+                  value="bank"
+                  className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary transition-all duration-300 text-sm py-2"
+                >
+                  Dados bancários
+                </TabsTrigger>
+                <TabsTrigger
+                  value="events"
+                  className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary transition-all duration-300 text-sm py-2"
+                >
+                  Eventos
+                </TabsTrigger>
+              </TabsList>
 
-                <FormField
-                  control={form.control}
-                  name="bankDetails.bank_name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <CreditCard className="w-5 h-5 text-indigo-600" />
-                        Nome do Banco *
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          disabled={isSubmitting}
-                          className="pl-10"
-                          aria-label="Nome do banco"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Aba: Dados Pessoais */}
+              <TabsContent value="personal" className="p-4 sm:p-6">
+                <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-4">
+                  Dados pessoais
+                </h2>
+                <Separator className="my-4 bg-muted-foreground/20" />
+                <div className="space-y-4">
                   <FormField
                     control={form.control}
-                    name="bankDetails.account_type"
+                    name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Tipo de Conta *</FormLabel>
+                        <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                          <User className="w-5 h-5 text-primary" />
+                          Nome Completo <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Nome completo"
+                            {...field}
+                            disabled={isSubmitting}
+                            className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                            aria-label="Nome completo do usuário"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                          <Mail className="w-5 h-5 text-primary" />
+                          Email <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type="email"
+                            placeholder="seu@email.com"
+                            {...field}
+                            disabled={isSubmitting}
+                            className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                            aria-label="Email do usuário"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="role"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                          <User className="w-5 h-5 text-primary" />
+                          Tipo de Cadastro{" "}
+                          <span className="text-red-500">*</span>
+                        </FormLabel>
                         <Select
                           onValueChange={field.onChange}
-                          value={field.value}
+                          defaultValue={field.value}
                           disabled={isSubmitting}
                         >
                           <FormControl>
-                            <SelectTrigger aria-label="Selecione o tipo de conta">
-                              <SelectValue placeholder="Selecione" />
+                            <SelectTrigger
+                              className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                              aria-label="Selecione o tipo de cadastro"
+                            >
+                              <SelectValue placeholder="Selecione o tipo" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="corrente">
-                              Conta Corrente
+                            <SelectItem value="artist">
+                              Artista Individual
                             </SelectItem>
-                            <SelectItem value="poupanca">
-                              Conta Poupança
+                            <SelectItem value="group">
+                              Grupo Cultural
                             </SelectItem>
                           </SelectContent>
                         </Select>
@@ -963,18 +955,105 @@ export default function EditUserContent() {
                       </FormItem>
                     )}
                   />
-
                   <FormField
                     control={form.control}
-                    name="bankDetails.agency"
+                    name="cpfCnpj"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Agência *</FormLabel>
+                        <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                          {form.getValues("role") === "artist" ? "CPF" : "CNPJ"}{" "}
+                          <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <MaskedInput
+                            mask={
+                              form.getValues("role") === "artist"
+                                ? "000.000.000-00"
+                                : "00.000.000/0000-00"
+                            }
+                            placeholder={
+                              form.getValues("role") === "artist"
+                                ? "000.000.000-00"
+                                : "00.000.000/0000-00"
+                            }
+                            {...field}
+                            onAccept={(value) => field.onChange(value)}
+                            disabled={isSubmitting}
+                            className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300 pl-10"
+                            aria-label={
+                              form.getValues("role") === "artist"
+                                ? "CPF do artista"
+                                : "CNPJ do grupo cultural"
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="birthDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                          <Calendar className="w-5 h-5 text-primary" />
+                          Data de Nascimento
+                        </FormLabel>
+                        <FormControl>
+                          <MaskedInput
+                            mask="00/00/0000"
+                            placeholder="DD/MM/YYYY"
+                            {...field}
+                            onAccept={(value) => field.onChange(value)}
+                            disabled={isSubmitting}
+                            className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300 pl-10"
+                            aria-label="Data de nascimento"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="bio"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground">
+                          Biografia
+                        </FormLabel>
+                        <FormControl>
+                          <Textarea
+                            rows={3}
+                            placeholder="Conte sobre o artista/grupo..."
+                            {...field}
+                            value={field.value || ""}
+                            disabled={isSubmitting}
+                            className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                            aria-label="Biografia do artista ou grupo"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="areaOfExpertise"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground">
+                          Área de Atuação
+                        </FormLabel>
                         <FormControl>
                           <Input
+                            placeholder="Ex: Música, Teatro, Dança"
                             {...field}
+                            value={field.value || ""}
                             disabled={isSubmitting}
-                            aria-label="Número da agência"
+                            className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                            aria-label="Área de atuação"
                           />
                         </FormControl>
                         <FormMessage />
@@ -983,272 +1062,884 @@ export default function EditUserContent() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex flex-wrap justify-end gap-2 sm:gap-4 mt-6">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleCancel}
+                    disabled={isSubmitting}
+                    className="border-muted-foreground/20 hover:bg-muted/20 text-muted-foreground transition-all duration-300 active:scale-95"
+                    aria-label="Cancelar edições"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={form.handleSubmit(onSubmitPersonal)}
+                    disabled={isSubmitting}
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground transition-all duration-300 active:scale-95"
+                    aria-label="Salvar edições"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      "Salvar edições"
+                    )}
+                  </Button>
+                </div>
+              </TabsContent>
+
+              {/* Aba: Portfólio */}
+              <TabsContent value="portfolio" className="p-4 sm:p-6">
+                <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-4">
+                  Portfólio
+                </h2>
+                <Separator className="my-4 bg-muted-foreground/20" />
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <ImageIcon className="w-5 h-5 text-primary" />
+                      Foto de perfil
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-primary/20 hover:bg-primary/10 text-primary transition-all duration-300"
+                        onClick={() =>
+                          document
+                            .getElementById("profile_picture_input")
+                            ?.click()
+                        }
+                        aria-label="Alterar foto de perfil"
+                      >
+                        Alterar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-blue-500/20 hover:bg-blue-500/10 text-blue-500 transition-all duration-300"
+                        onClick={() => handleViewFile("profile_picture")}
+                        disabled={!profilePreview}
+                        aria-label="Visualizar foto de perfil"
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        Visualizar
+                      </Button>
+                      {profilePreview && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-red-500/20 hover:bg-red-500/10 text-red-500 transition-all duration-300"
+                          onClick={() => handleClearFile("profile_picture")}
+                          aria-label="Remover foto de perfil"
+                        >
+                          <X className="w-4 h-4 mr-2" />
+                          Remover
+                        </Button>
+                      )}
+                      <input
+                        id="profile_picture_input"
+                        type="file"
+                        accept="image/jpeg,image/png,image/jpg,image/gif"
+                        onChange={(e) => handleFileChange("profile_picture", e)}
+                        className="hidden"
+                        aria-label="Selecionar nova foto de perfil"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-primary" />
+                      Portfólio (PDF)
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-primary/20 hover:bg-primary/10 text-primary transition-all duration-300"
+                        onClick={() =>
+                          document.getElementById("portfolio_input")?.click()
+                        }
+                        aria-label="Alterar portfólio"
+                      >
+                        Alterar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-blue-500/20 hover:bg-blue-500/10 text-blue-500 transition-all duration-300"
+                        onClick={() => handleViewFile("portfolio")}
+                        aria-label="Visualizar portfólio"
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        Visualizar
+                      </Button>
+                      <input
+                        id="portfolio_input"
+                        type="file"
+                        accept="application/pdf"
+                        onChange={(e) => handleFileChange("portfolio", e)}
+                        className="hidden"
+                        aria-label="Selecionar novo portfólio"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <Video className="w-5 h-5 text-primary" />
+                      Vídeo
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-primary/20 hover:bg-primary/10 text-primary transition-all duration-300"
+                        onClick={() =>
+                          document.getElementById("video_input")?.click()
+                        }
+                        aria-label="Alterar vídeo"
+                      >
+                        Alterar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-blue-500/20 hover:bg-blue-500/10 text-blue-500 transition-all duration-300"
+                        onClick={() => handleViewFile("video")}
+                        aria-label="Visualizar vídeo"
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        Visualizar
+                      </Button>
+                      <input
+                        id="video_input"
+                        type="file"
+                        accept="video/mp4,video/webm,video/ogg"
+                        onChange={(e) => handleFileChange("video", e)}
+                        className="hidden"
+                        aria-label="Selecionar novo vídeo"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-primary" />
+                      Arquivos relacionados
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-primary/20 hover:bg-primary/10 text-primary transition-all duration-300"
+                        onClick={() =>
+                          document
+                            .getElementById("related_files_input")
+                            ?.click()
+                        }
+                        aria-label="Alterar arquivos relacionados"
+                      >
+                        Alterar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-blue-500/20 hover:bg-blue-500/10 text-blue-500 transition-all duration-300"
+                        onClick={() => handleViewFile("related_files")}
+                        aria-label="Visualizar arquivos relacionados"
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        Visualizar
+                      </Button>
+                      <input
+                        id="related_files_input"
+                        type="file"
+                        onChange={(e) => handleFileChange("related_files", e)}
+                        className="hidden"
+                        aria-label="Selecionar novos arquivos relacionados"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* Aba: Endereço */}
+              <TabsContent value="address" className="p-4 sm:p-6">
+                <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-4">
+                  Endereço
+                </h2>
+                <Separator className="my-4 bg-muted-foreground/20" />
+                <div className="space-y-4">
                   <FormField
                     control={form.control}
-                    name="bankDetails.account_number"
+                    name="address.cep"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Número da Conta *</FormLabel>
+                        <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                          <MapPin className="w-5 h-5 text-primary" />
+                          CEP <span className="text-red-500">*</span>
+                        </FormLabel>
                         <FormControl>
-                          <Input
-                            {...field}
-                            disabled={isSubmitting}
-                            aria-label="Número da conta bancária"
+                          <MaskedInput
+                            mask="00000-000"
+                            placeholder="00000-000"
+                            defaultValue={field.value}
+                            onAccept={(value) => {
+                              field.onChange(value);
+                              const cleanValue = value.replace(/\D/g, "");
+                              if (cleanValue.length === 8) {
+                                fetchAddressByCep(value);
+                              }
+                            }}
+                            onBlur={() => form.trigger("address.cep")}
+                            disabled={isLoadingCep || isSubmitting}
+                            className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300 pl-10"
+                            aria-label="CEP do endereço"
                           />
                         </FormControl>
+                        <div className="text-sm mt-1">
+                          {cepStatus === "loading" && (
+                            <p className="text-muted-foreground flex items-center gap-2">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Buscando endereço...
+                            </p>
+                          )}
+                          {cepStatus === "success" && (
+                            <p className="text-green-600">
+                              Endereço preenchido com sucesso!
+                            </p>
+                          )}
+                          {cepStatus === "error" && (
+                            <p className="text-red-600">
+                              Não foi possível buscar o endereço.
+                            </p>
+                          )}
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="address.logradouro"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-muted-foreground">
+                            Logradouro <span className="text-red-500">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              disabled={isSubmitting}
+                              className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                              aria-label="Logradouro do endereço"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="address.numero"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-muted-foreground">
+                            Número <span className="text-red-500">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              disabled={isSubmitting}
+                              className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                              aria-label="Número do endereço"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                   <FormField
                     control={form.control}
-                    name="bankDetails.pix_key"
+                    name="address.complemento"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Chave PIX</FormLabel>
+                        <FormLabel className="text-muted-foreground">
+                          Complemento
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
                             value={field.value || ""}
                             disabled={isSubmitting}
-                            aria-label="Chave PIX"
+                            className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                            aria-label="Complemento do endereço"
                           />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="address.bairro"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-muted-foreground">
+                            Bairro <span className="text-red-500">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              disabled={isSubmitting}
+                              className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                              aria-label="Bairro do endereço"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="address.cidade"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-muted-foreground">
+                            Cidade <span className="text-red-500">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              disabled={isSubmitting}
+                              className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                              aria-label="Cidade do endereço"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="address.estado"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground">
+                          Estado (UF) <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                          disabled={isSubmitting}
+                        >
+                          <FormControl>
+                            <SelectTrigger
+                              className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                              aria-label="Selecione o estado"
+                            >
+                              <SelectValue placeholder="Selecione o estado" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {BRAZILIAN_STATES.map((uf) => (
+                              <SelectItem key={uf} value={uf}>
+                                {uf}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
-              </div>
 
-              {/* Arquivos */}
-              <div className="bg-gray-50 p-6 rounded-lg space-y-4">
-                <h2 className="text-xl font-semibold">Mídias e Arquivos</h2>
+                <div className="flex flex-wrap justify-end gap-2 sm:gap-4 mt-6">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleCancel}
+                    disabled={isSubmitting}
+                    className="border-muted-foreground/20 hover:bg-muted/20 text-muted-foreground transition-all duration-300 active:scale-95"
+                    aria-label="Cancelar edições"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={form.handleSubmit(onSubmitAddress)}
+                    disabled={isSubmitting}
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground transition-all duration-300 active:scale-95"
+                    aria-label="Salvar edições"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      "Salvar edições"
+                    )}
+                  </Button>
+                </div>
+              </TabsContent>
 
-                <FormField
-                  control={form.control}
-                  name="profilePicture"
-                  render={({}) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <ImageIcon className="w-5 h-5 text-indigo-600" />
-                        Foto de Perfil
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="file"
-                          accept="image/jpeg,image/png,image/jpg,image/gif"
-                          onChange={(e) =>
-                            handleFileChange(
-                              "profilePicture",
-                              e,
-                              setProfilePreview
-                            )
-                          }
-                          disabled={isSubmitting}
-                          aria-label="Selecionar foto de perfil"
-                        />
-                      </FormControl>
-                      {profilePreview && (
-                        <div className="mt-2 h-32 w-32 relative">
-                          <Image
-                            src={profilePreview}
-                            alt="Prévia da foto de perfil"
-                            fill
-                            className="object-cover rounded"
+              {/* Aba: Dados Bancários */}
+              <TabsContent value="bank" className="p-4 sm:p-6">
+                <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-4">
+                  Dados bancários
+                </h2>
+                <Separator className="my-4 bg-muted-foreground/20" />
+                <div className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="bankDetails.bank_name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                          <CreditCard className="w-5 h-5 text-primary" />
+                          Nome do Banco <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            disabled={isSubmitting}
+                            className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300 pl-10"
+                            aria-label="Nome do banco"
                           />
-                        </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="bankDetails.account_type"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-muted-foreground">
+                            Tipo de Conta{" "}
+                            <span className="text-red-500">*</span>
+                          </FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
+                            disabled={isSubmitting}
+                          >
+                            <FormControl>
+                              <SelectTrigger
+                                className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                                aria-label="Selecione o tipo de conta"
+                              >
+                                <SelectValue placeholder="Selecione" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="corrente">
+                                Conta Corrente
+                              </SelectItem>
+                              <SelectItem value="poupanca">
+                                Conta Poupança
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
                       )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                    />
+                    <FormField
+                      control={form.control}
+                      name="bankDetails.agency"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-muted-foreground">
+                            Agência <span className="text-red-500">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              disabled={isSubmitting}
+                              className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                              aria-label="Número da agência"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="bankDetails.account_number"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-muted-foreground">
+                            Número da Conta{" "}
+                            <span className="text-red-500">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              disabled={isSubmitting}
+                              className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                              aria-label="Número da conta bancária"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="bankDetails.pix_key"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-muted-foreground">
+                            Chave PIX
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              value={field.value || ""}
+                              disabled={isSubmitting}
+                              className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                              aria-label="Chave PIX"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
 
-                <FormField
-                  control={form.control}
-                  name="portfolio"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <FileText className="w-5 h-5 text-indigo-600" />
-                        Portfólio (PDF)
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="file"
-                          accept="application/pdf"
-                          onChange={(e) => handleFileChange("portfolio", e)}
-                          disabled={isSubmitting}
-                          aria-label="Selecionar portfólio em PDF"
-                        />
-                      </FormControl>
-                      {field.value && (
-                        <p className="text-sm text-gray-500 mt-1">
-                          Arquivo selecionado: {field.value.name}
-                        </p>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="flex flex-wrap justify-end gap-2 sm:gap-4 mt-6">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleCancel}
+                    disabled={isSubmitting}
+                    className="border-muted-foreground/20 hover:bg-muted/20 text-muted-foreground transition-all duration-300 active:scale-95"
+                    aria-label="Cancelar edições"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={form.handleSubmit(onSubmitBank)}
+                    disabled={isSubmitting}
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground transition-all duration-300 active:scale-95"
+                    aria-label="Salvar edições"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      "Salvar edições"
+                    )}
+                  </Button>
+                </div>
+              </TabsContent>
 
-                <FormField
-                  control={form.control}
-                  name="video"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <Video className="w-5 h-5 text-indigo-600" />
-                        Vídeo
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="file"
-                          accept="video/mp4,video/webm,video/ogg"
-                          onChange={(e) => handleFileChange("video", e)}
-                          disabled={isSubmitting}
-                          aria-label="Selecionar vídeo"
-                        />
-                      </FormControl>
-                      {field.value && (
-                        <p className="text-sm text-gray-500 mt-1">
-                          Arquivo selecionado: {field.value.name}
-                        </p>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              {/* Aba: Eventos */}
+              <TabsContent value="events" className="p-4 sm:p-6">
+                <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-4">
+                  Eventos
+                </h2>
+                <Separator className="my-4 bg-muted-foreground/20" />
+                <p className="text-muted-foreground">
+                  Lista de eventos será implementada aqui (requer endpoint
+                  `/api/users/:id/events`).
+                </p>
+              </TabsContent>
+            </Tabs>
+          </Card>
+        </FormProvider>
 
-                <FormField
-                  control={form.control}
-                  name="relatedFiles"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <FileText className="w-5 h-5 text-indigo-600" />
-                        Arquivos Relacionados
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="file"
-                          onChange={(e) => handleFileChange("relatedFiles", e)}
-                          disabled={isSubmitting}
-                          aria-label="Selecionar arquivos relacionados"
-                        />
-                      </FormControl>
-                      {field.value && (
-                        <p className="text-sm text-gray-500 mt-1">
-                          Arquivo selecionado: {field.value.name}
-                        </p>
-                      )}
-                      <FormMessage />
-                    </FormItem>
+        {/* Modal de Upload de Arquivo */}
+        {uploadDialog && (
+          <Dialog
+            open={!!uploadDialog}
+            onOpenChange={() => setUploadDialog(null)}
+          >
+            <DialogContent className="bg-muted shadow-sm rounded-lg animate-in fade-in duration-500 max-w-[90vw] sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle className="text-xl sm:text-2xl font-semibold tracking-tight">
+                  Alterar{" "}
+                  {uploadDialog.type === "profile_picture"
+                    ? "Foto de Perfil"
+                    : uploadDialog.type === "portfolio"
+                    ? "Portfólio"
+                    : uploadDialog.type === "video"
+                    ? "Vídeo"
+                    : "Arquivos Relacionados"}
+                </DialogTitle>
+              </DialogHeader>
+              {uploadDialog.preview && (
+                <div className="my-4">
+                  {uploadDialog.type === "profile_picture" ? (
+                    <div className="relative w-full h-64">
+                      <Image
+                        src={uploadDialog.preview}
+                        alt="Pré-visualização"
+                        fill
+                        className="object-contain"
+                        style={{
+                          transform: `rotate(${uploadDialog.rotation}deg)`,
+                        }}
+                      />
+                    </div>
+                  ) : uploadDialog.type === "portfolio" ? (
+                    <iframe
+                      src={uploadDialog.preview}
+                      className="w-full h-96"
+                      title="Pré-visualização do PDF"
+                    />
+                  ) : uploadDialog.type === "video" ? (
+                    <video controls className="w-full h-auto">
+                      <source src={uploadDialog.preview} type="video/mp4" />
+                      Seu navegador não suporta o elemento de vídeo.
+                    </video>
+                  ) : (
+                    <p className="text-muted-foreground">
+                      Arquivo selecionado: {uploadDialog.file?.name}
+                    </p>
                   )}
+                </div>
+              )}
+              <div className="flex flex-col sm:flex-row gap-2 items-center justify-between mt-4">
+                <Input
+                  type="file"
+                  accept={
+                    uploadDialog.type === "profile_picture"
+                      ? "image/jpeg,image/png,image/jpg,image/gif"
+                      : uploadDialog.type === "portfolio"
+                      ? "application/pdf"
+                      : uploadDialog.type === "video"
+                      ? "video/mp4,video/webm,video/ogg"
+                      : "*/*"
+                  }
+                  onChange={(e) => handleFileChange(uploadDialog.type, e)}
+                  disabled={isSubmitting}
+                  className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300 w-full sm:w-auto"
+                  aria-label={`Selecionar novo arquivo para ${uploadDialog.type}`}
                 />
+                {uploadDialog.type === "profile_picture" && (
+                  <Button
+                    variant="outline"
+                    onClick={handleRotateImage}
+                    className="border-muted-foreground/20 hover:bg-muted/20 text-muted-foreground transition-all duration-300 active:scale-95"
+                    aria-label="Girar imagem"
+                  >
+                    <RotateCw className="w-4 h-4 mr-2 text-primary" />
+                    Girar
+                  </Button>
+                )}
               </div>
-
-              <div className="flex justify-end gap-4 pt-6">
+              <DialogFooter className="flex flex-col sm:flex-row gap-2 mt-4">
                 <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  aria-label="Salvar alterações do usuário"
-                >
-                  {isSubmitting ? "Salvando..." : "Salvar Alterações"}
-                </Button>
-                <Button
-                  type="button"
                   variant="outline"
-                  onClick={() => router.push(`/users/${id}`)}
+                  onClick={() => setUploadDialog(null)}
                   disabled={isSubmitting}
-                  aria-label="Cancelar edição"
+                  className="border-muted-foreground/20 hover:bg-muted/20 text-muted-foreground transition-all duration-300 active:scale-95 w-full sm:w-auto"
+                  aria-label="Cancelar upload"
                 >
                   Cancelar
                 </Button>
                 <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setShowPasswordDialog(true)}
-                  disabled={isSubmitting}
-                  aria-label="Alterar senha do usuário"
+                  onClick={handleUploadFile}
+                  disabled={isSubmitting || !uploadDialog.file}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground transition-all duration-300 active:scale-95 w-full sm:w-auto"
+                  aria-label="Enviar arquivo"
                 >
-                  Alterar Senha
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    "Enviar arquivo"
+                  )}
                 </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Modal de Visualização de Arquivo */}
+        {viewDialog && (
+          <Dialog open={!!viewDialog} onOpenChange={() => setViewDialog(null)}>
+            <DialogContent className="bg-muted shadow-sm rounded-lg animate-in fade-in duration-500 max-w-[90vw] sm:max-w-3xl">
+              <DialogHeader>
+                <DialogTitle className="text-xl sm:text-2xl font-semibold tracking-tight">
+                  Visualizar{" "}
+                  {viewDialog.type === "profile_picture"
+                    ? "Foto de Perfil"
+                    : viewDialog.type === "portfolio"
+                    ? "Portfólio"
+                    : viewDialog.type === "video"
+                    ? "Vídeo"
+                    : "Arquivos Relacionados"}
+                </DialogTitle>
+              </DialogHeader>
+              {viewDialog.isLoading ? (
+                <div className="flex items-center justify-center h-64">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                </div>
+              ) : viewDialog.error ? (
+                <div className="text-red-600 text-center py-4">
+                  {viewDialog.error}
+                </div>
+              ) : viewDialog.data ? (
+                <div className="my-4">
+                  {viewDialog.type === "profile_picture" ? (
+                    <div className="relative w-full h-64">
+                      <Image
+                        src={viewDialog.data}
+                        alt="Foto de perfil"
+                        fill
+                        className="object-contain"
+                      />
+                    </div>
+                  ) : viewDialog.type === "portfolio" ? (
+                    <iframe
+                      src={viewDialog.data}
+                      className="w-full h-[60vh]"
+                      title="Visualização do PDF"
+                    />
+                  ) : viewDialog.type === "video" ? (
+                    <video controls className="w-full h-auto">
+                      <source src={viewDialog.data} type="video/mp4" />
+                      Seu navegador não suporta o elemento de vídeo.
+                    </video>
+                  ) : (
+                    <div className="text-center">
+                      <p className="text-muted-foreground mb-4">
+                        Arquivo relacionado
+                      </p>
+                      <a
+                        href={viewDialog.data}
+                        download="related_file"
+                        className="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-all duration-300"
+                      >
+                        Baixar Arquivo
+                      </a>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-muted-foreground text-center py-4">
+                  Nenhum arquivo disponível para visualização.
+                </div>
+              )}
+              <DialogFooter className="flex justify-end">
                 <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() => setShowDeleteDialog(true)}
-                  disabled={isSubmitting}
-                  aria-label="Deletar usuário"
+                  variant="outline"
+                  onClick={() => setViewDialog(null)}
+                  className="border-muted-foreground/20 hover:bg-muted/20 text-muted-foreground transition-all duration-300 active:scale-95"
+                  aria-label="Fechar visualização"
                 >
-                  Deletar Usuário
+                  Fechar
                 </Button>
-              </div>
-            </form>
-          </Form>
-        </div>
-      </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
 
-      {/* Diálogo de Confirmação para Deletar */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja deletar este usuário? Esta ação não pode
-              ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteUser}
-              aria-label="Confirmar exclusão do usuário"
-            >
-              Confirmar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {/* Diálogo de Confirmação para Deletar */}
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent className="bg-muted shadow-sm rounded-lg animate-in fade-in duration-500">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-xl sm:text-2xl font-semibold tracking-tight">
+                Confirmar exclusão
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-muted-foreground">
+                Tem certeza que deseja deletar este usuário? Esta ação não pode
+                ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="flex flex-col sm:flex-row gap-2">
+              <AlertDialogCancel className="border-muted-foreground/20 hover:bg-muted/20 text-muted-foreground transition-all duration-300 active:scale-95 w-full sm:w-auto">
+                Cancelar
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteUser}
+                className="bg-red-600 hover:bg-red-700 text-white transition-all duration-300 active:scale-95 w-full sm:w-auto"
+                aria-label="Confirmar exclusão do usuário"
+              >
+                Confirmar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      {/* Diálogo para Alterar Senha */}
-      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Alterar Senha</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Input
-              type="password"
-              placeholder="Nova senha"
-              value={newPassword}
-              onChange={(e) => {
-                setNewPassword(e.target.value);
-                if (e.target.value.length < 6) {
-                  setPasswordError("A senha deve ter pelo menos 6 caracteres");
-                } else {
+        {/* Diálogo para Alterar Senha */}
+        <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+          <DialogContent className="bg-muted shadow-sm rounded-lg animate-in fade-in duration-500 max-w-[90vw] sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-xl sm:text-2xl font-semibold tracking-tight">
+                Alterar Senha
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Input
+                type="password"
+                placeholder="Nova senha"
+                value={newPassword}
+                onChange={(e) => {
+                  setNewPassword(e.target.value);
+                  if (e.target.value.length < 6) {
+                    setPasswordError(
+                      "A senha deve ter pelo menos 6 caracteres"
+                    );
+                  } else {
+                    setPasswordError(null);
+                  }
+                }}
+                className="bg-background border-muted-foreground/20 focus:ring-primary transition-all duration-300"
+                aria-label="Nova senha do usuário"
+              />
+              {passwordError && (
+                <p className="text-red-600 text-sm">{passwordError}</p>
+              )}
+            </div>
+            <DialogFooter className="flex flex-col sm:flex-row gap-2">
+              <Button
+                onClick={handleChangePassword}
+                disabled={!!passwordError || newPassword.length === 0}
+                className="bg-primary/10 hover:bg-primary/20 text-primary transition-all duration-300 active:scale-95 w-full sm:w-auto"
+                aria-label="Salvar nova senha"
+              >
+                Salvar
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowPasswordDialog(false);
+                  setNewPassword("");
                   setPasswordError(null);
-                }
-              }}
-              aria-label="Nova senha do usuário"
-            />
-            {passwordError && (
-              <p className="text-sm text-red-600">{passwordError}</p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              onClick={handleChangePassword}
-              disabled={!!passwordError || newPassword.length === 0}
-              aria-label="Salvar nova senha"
-            >
-              Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                }}
+                className="border-muted-foreground/20 hover:bg-muted/20 text-muted-foreground transition-all duration-300 active:scale-95 w-full sm:w-auto"
+                aria-label="Cancelar alteração de senha"
+              >
+                Cancelar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 }

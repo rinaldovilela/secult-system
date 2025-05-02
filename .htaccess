@@ -1,0 +1,10 @@
+RewriteEngine On
+RewriteBase /
+
+# Redireciona para a versão sem .html
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}\.html -f
+RewriteRule ^(.*)$ $1.html [L]
+
+# Configura a página de erro 404 personalizada
+ErrorDocument 404 /404.html

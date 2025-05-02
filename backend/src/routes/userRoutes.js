@@ -1,11 +1,11 @@
 const express = require("express");
-const { v4: uuidv4 } = require("uuid"); // Importar a função v4 para gerar UUIDs
+const { v4: uuidv4 } = require("uuid");
 const router = express.Router();
 const db = require("../config/db");
 const { authenticateToken } = require("../middleware/auth");
 const bcrypt = require("bcrypt");
 const multer = require("multer");
-const cpfCnpjValidator = require("cpf-cnpj-validator"); // Para validação de CPF/CNPJ
+const cpfCnpjValidator = require("cpf-cnpj-validator");
 const { cpf, cnpj } = cpfCnpjValidator;
 
 // Função auxiliar para validar UUID
@@ -53,13 +53,13 @@ const validateArtistData = async (req, res, next) => {
           : req.body.address;
 
       if (
-        !address ||
-        !address.cep ||
-        !address.logradouro ||
-        !address.numero ||
-        !address.bairro ||
-        !address.cidade ||
-        !address.estado
+        address &&
+        (!address.cep ||
+          !address.logradouro ||
+          !address.numero ||
+          !address.bairro ||
+          !address.cidade ||
+          !address.estado)
       ) {
         return res.status(400).json({
           error: "Endereço incompleto",
@@ -81,11 +81,11 @@ const validateArtistData = async (req, res, next) => {
           : req.body.bank_details;
 
       if (
-        !bankDetails ||
-        !bankDetails.bank_name ||
-        !bankDetails.account_type ||
-        !bankDetails.agency ||
-        !bankDetails.account_number
+        bankDetails &&
+        (!bankDetails.bank_name ||
+          !bankDetails.account_type ||
+          !bankDetails.agency ||
+          !bankDetails.account_number)
       ) {
         return res.status(400).json({
           error: "Dados bancários incompletos",
@@ -99,8 +99,8 @@ const validateArtistData = async (req, res, next) => {
       }
 
       // Adicionar os objetos parseados de volta ao req.body
-      req.body.address = address;
-      req.body.bank_details = bankDetails;
+      if (address) req.body.address = address;
+      if (bankDetails) req.body.bank_details = bankDetails;
     } catch (error) {
       return res.status(400).json({
         error: "Erro ao processar JSON",
@@ -398,12 +398,12 @@ router.post(
         email,
         password,
         role,
-        cpf_cnpj, // Novo campo (obrigatório para todos)
+        cpf_cnpj,
         bio = "",
         area_of_expertise = "",
-        birth_date, // Novo campo (opcional)
-        address, // Novo campo (JSON, obrigatório para artist/group)
-        bank_details, // Novo campo (JSON, obrigatório para artist/group)
+        birth_date,
+        address,
+        bank_details,
       } = req.body;
       const files = req.files;
 
@@ -545,6 +545,7 @@ router.put(
     { name: "related_files", maxCount: 1 },
   ]),
   handleMulterError,
+  validateArtistData,
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -554,7 +555,7 @@ router.put(
         bio,
         area_of_expertise,
         role,
-        cpf_cnpj, // Adicione este campo
+        cpf_cnpj,
         birth_date,
         address,
         bank_details,
@@ -571,31 +572,57 @@ router.put(
         return res.status(403).json({ error: "Acesso negado" });
       }
 
-      // Validar campos obrigatórios
-      if (!name || !email || !role || !cpf_cnpj) {
-        // Adicione cpf_cnpj como obrigatório
-        return res.status(400).json({ error: "Campos obrigatórios ausentes" });
+      // Buscar usuário existente para preencher valores padrão
+      const [users] = await db.query(
+        `
+        SELECT u.id, u.name, u.email, u.role, u.cpf_cnpj,
+               agd.bio, agd.area_of_expertise, agd.birth_date, agd.address, agd.bank_details
+        FROM users u
+        LEFT JOIN artist_group_details agd ON u.id = agd.user_id
+        WHERE u.id = ?
+      `,
+        [id]
+      );
+
+      if (users.length === 0) {
+        return res.status(404).json({ error: "Usuário não encontrado" });
       }
 
-      // Validar CPF/CNPJ
-      if (!cpf.isValid(cpf_cnpj) && !cnpj.isValid(cpf_cnpj)) {
+      const existingUser = users[0];
+      const existingAddress =
+        typeof existingUser.address === "string"
+          ? JSON.parse(existingUser.address)
+          : existingUser.address;
+      const existingBankDetails =
+        typeof existingUser.bank_details === "string"
+          ? JSON.parse(existingUser.bank_details)
+          : existingUser.bank_details;
+
+      // Se nenhum dado básico for enviado, apenas atualize os arquivos ou campos específicos
+      let updatedName = name || existingUser.name;
+      let updatedEmail = email || existingUser.email;
+      let updatedRole = role || existingUser.role;
+      let updatedCpfCnpj = cpf_cnpj || existingUser.cpf_cnpj;
+
+      // Validações apenas para os campos enviados
+      if (email) {
+        const [existingEmail] = await db.query(
+          "SELECT * FROM users WHERE email = ? AND id != ?",
+          [email, id]
+        );
+        if (existingEmail.length > 0) {
+          return res.status(400).json({ error: "Email já está em uso" });
+        }
+      }
+
+      if (cpf_cnpj && !cpf.isValid(cpf_cnpj) && !cnpj.isValid(cpf_cnpj)) {
         return res.status(400).json({ error: "CPF ou CNPJ inválido" });
       }
 
-      // Validar role
-      if (!["artist", "group"].includes(role)) {
+      if (role && !["artist", "group"].includes(role)) {
         return res
           .status(400)
           .json({ error: "Role inválido. Use 'artist' ou 'group'" });
-      }
-
-      // Verificar se o email já está em uso por outro usuário
-      const [existing] = await db.query(
-        "SELECT * FROM users WHERE email = ? AND id != ?",
-        [email, id]
-      );
-      if (existing.length > 0) {
-        return res.status(400).json({ error: "Email já está em uso" });
       }
 
       // Processar arquivos (se fornecidos)
@@ -608,31 +635,27 @@ router.put(
         ? files.related_files[0].buffer
         : null;
 
-      // Atualizar na tabela users (adicione cpf_cnpj)
-      const [result] = await db.query(
+      // Atualizar na tabela users
+      await db.query(
         `
         UPDATE users
         SET name = ?, email = ?, role = ?, cpf_cnpj = ?, profile_picture = COALESCE(?, profile_picture)
         WHERE id = ?
       `,
-        [name, email, role, cpf_cnpj, profilePicture, id]
+        [
+          updatedName,
+          updatedEmail,
+          updatedRole,
+          updatedCpfCnpj,
+          profilePicture,
+          id,
+        ]
       );
 
-      // Verificar se o usuário foi encontrado e atualizado
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ error: "Usuário não encontrado" });
-      }
-
       // Atualizar na tabela artist_group_details (se for artist ou group)
-      if (["artist", "group"].includes(role)) {
-        const addressObj =
-          address && typeof address === "string"
-            ? JSON.parse(address)
-            : address;
-        const bankDetailsObj =
-          bank_details && typeof bank_details === "string"
-            ? JSON.parse(bank_details)
-            : bank_details;
+      if (["artist", "group"].includes(updatedRole)) {
+        const addressObj = address || existingAddress;
+        const bankDetailsObj = bank_details || existingBankDetails;
 
         // Verificar se o registro já existe em artist_group_details
         const [existingDetails] = await db.query(
@@ -645,9 +668,14 @@ router.put(
           await db.query(
             `
             UPDATE artist_group_details
-            SET bio = ?, area_of_expertise = ?, portfolio = COALESCE(?, portfolio),
-                video = COALESCE(?, video), related_files = COALESCE(?, related_files),
-                birth_date = ?, address = ?, bank_details = ?
+            SET bio = COALESCE(?, bio),
+                area_of_expertise = COALESCE(?, area_of_expertise),
+                portfolio = COALESCE(?, portfolio),
+                video = COALESCE(?, video),
+                related_files = COALESCE(?, related_files),
+                birth_date = COALESCE(?, birth_date),
+                address = ?,
+                bank_details = ?
             WHERE user_id = ?
           `,
             [
@@ -656,7 +684,7 @@ router.put(
               portfolio,
               video,
               relatedFiles,
-              birth_date || null,
+              birth_date,
               addressObj
                 ? JSON.stringify(addressObj)
                 : existingDetails[0].address,
@@ -917,6 +945,152 @@ router.put("/:id/password", authenticateToken, async (req, res) => {
   } catch (error) {
     console.error("Erro ao atualizar senha:", error);
     res.status(500).json({ error: "Erro ao atualizar senha" });
+  }
+});
+
+// PUT /api/users/:id/file/:type - Atualizar arquivo específico do usuário
+router.put(
+  "/:id/file/:type",
+  authenticateToken,
+  upload.single("file"),
+  handleMulterError,
+  async (req, res) => {
+    try {
+      const { id, type } = req.params;
+
+      // Validar se o id é um UUID válido
+      if (!isValidUUID(id)) {
+        return res.status(400).json({ error: `ID inválido: ${id}` });
+      }
+
+      // Verificar se o usuário tem permissão (admin ou secretary)
+      if (!["admin", "secretary"].includes(req.user.role)) {
+        return res.status(403).json({ error: "Acesso negado" });
+      }
+
+      // Validar tipo de arquivo
+      const validTypes = [
+        "profile_picture",
+        "portfolio",
+        "video",
+        "related_files",
+      ];
+      if (!validTypes.includes(type)) {
+        return res.status(400).json({ error: "Tipo de arquivo inválido" });
+      }
+
+      // Verificar se o usuário existe
+      const [user] = await db.query("SELECT * FROM users WHERE id = ?", [id]);
+      if (user.length === 0) {
+        return res.status(404).json({ error: "Usuário não encontrado" });
+      }
+
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ error: "Nenhum arquivo enviado" });
+      }
+
+      // Atualizar arquivo
+      if (type === "profile_picture") {
+        await db.query(
+          `
+          UPDATE users
+          SET profile_picture = ?
+          WHERE id = ?
+        `,
+          [file.buffer, id]
+        );
+      } else {
+        // Verificar se o registro existe em artist_group_details
+        const [existingDetails] = await db.query(
+          "SELECT * FROM artist_group_details WHERE user_id = ?",
+          [id]
+        );
+
+        if (existingDetails.length === 0) {
+          return res.status(404).json({
+            error: "Detalhes do artista/grupo não encontrados",
+          });
+        }
+
+        await db.query(
+          `
+          UPDATE artist_group_details
+          SET ${type} = ?
+          WHERE user_id = ?
+        `,
+          [file.buffer, id]
+        );
+      }
+
+      res.status(200).json({ message: `${type} atualizado com sucesso` });
+    } catch (error) {
+      console.error(`Erro ao atualizar ${type}:`, error);
+      res.status(500).json({ error: `Erro ao atualizar ${type}` });
+    }
+  }
+);
+
+// GET /api/users/:id/file/:type - Buscar arquivo específico do usuário
+router.get("/:id/file/:type", authenticateToken, async (req, res) => {
+  try {
+    const { id, type } = req.params;
+
+    // Validar se o id é um UUID válido
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: `ID inválido: ${id}` });
+    }
+
+    // Verificar se o usuário tem permissão (admin ou secretary)
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    // Validar tipo de arquivo
+    const validTypes = [
+      "profile_picture",
+      "portfolio",
+      "video",
+      "related_files",
+    ];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({ error: "Tipo de arquivo inválido" });
+    }
+
+    // Buscar arquivo
+    let fileData;
+    if (type === "profile_picture") {
+      const [users] = await db.query(
+        "SELECT profile_picture FROM users WHERE id = ?",
+        [id]
+      );
+      if (users.length === 0) {
+        return res.status(404).json({ error: "Usuário não encontrado" });
+      }
+      fileData = users[0].profile_picture;
+    } else {
+      const [details] = await db.query(
+        `SELECT ${type} FROM artist_group_details WHERE user_id = ?`,
+        [id]
+      );
+      if (details.length === 0) {
+        return res.status(404).json({
+          error: "Detalhes do artista/grupo não encontrados",
+        });
+      }
+      fileData = details[0][type];
+    }
+
+    if (!fileData) {
+      return res.status(404).json({ error: `${type} não encontrado` });
+    }
+
+    // Retornar arquivo como base64
+    const base64Data = Buffer.from(fileData).toString("base64");
+    res.status(200).json({ file: base64Data });
+  } catch (error) {
+    console.error(`Erro ao buscar ${type}:`, error);
+    res.status(500).json({ error: `Erro ao buscar ${type}` });
   }
 });
 
