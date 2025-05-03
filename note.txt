@@ -14,3 +14,8 @@ ALTER TABLE event_artists DROP COLUMN user_id_old;
 
 -- Definir a nova chave primária composta por event_id e user_id
 ALTER TABLE event_artists ADD PRIMARY KEY (event_id, user_id);
+
+
+
+CREATE INDEX idx_users_id ON users(id);
+CREATE INDEX idx_artist_group_details_user_id ON artist_group_details(user_id);

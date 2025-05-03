@@ -7,21 +7,26 @@ const bcrypt = require("bcrypt");
 const multer = require("multer");
 const cpfCnpjValidator = require("cpf-cnpj-validator");
 const { cpf, cnpj } = cpfCnpjValidator;
+const compression = require("compression"); // Adicionando compressão
 
-// Função auxiliar para validar UUID
+// Cache em memória
+const cache = {};
+const CACHE_DURATION = 300000; // 5 minutos em milissegundos
+
 const isValidUUID = (uuid) => {
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   return uuidRegex.test(uuid);
 };
 
-// Log para verificar se o arquivo de rotas está sendo acessado
+// Habilitar compressão para todas as rotas
+router.use(compression());
+
 router.use((req, res, next) => {
   console.log(`Recebida requisição: ${req.method} ${req.originalUrl}`);
   next();
 });
 
-// Configurar o multer para lidar com upload de arquivos
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -29,7 +34,6 @@ const upload = multer({
   },
 });
 
-// Middleware para tratar erros do multer
 const handleMulterError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
@@ -42,16 +46,13 @@ const handleMulterError = (err, req, res, next) => {
   next(err);
 };
 
-// Middleware para validar dados de artista/grupo
 const validateArtistData = async (req, res, next) => {
   if (["artist", "group"].includes(req.body.role)) {
     try {
-      // Validar address
       const address =
         typeof req.body.address === "string"
           ? JSON.parse(req.body.address)
           : req.body.address;
-
       if (
         address &&
         (!address.cep ||
@@ -73,13 +74,10 @@ const validateArtistData = async (req, res, next) => {
           ],
         });
       }
-
-      // Validar bank_details
       const bankDetails =
         typeof req.body.bank_details === "string"
           ? JSON.parse(req.body.bank_details)
           : req.body.bank_details;
-
       if (
         bankDetails &&
         (!bankDetails.bank_name ||
@@ -97,19 +95,86 @@ const validateArtistData = async (req, res, next) => {
           ],
         });
       }
-
-      // Adicionar os objetos parseados de volta ao req.body
       if (address) req.body.address = address;
       if (bankDetails) req.body.bank_details = bankDetails;
     } catch (error) {
-      return res.status(400).json({
-        error: "Erro ao processar JSON",
-        details: error.message,
-      });
+      return res
+        .status(400)
+        .json({ error: "Erro ao processar JSON", details: error.message });
     }
   }
   next();
 };
+
+// GET /api/users/details/:id - Buscar detalhes completos de um usuário
+router.get("/details/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: `ID inválido: ${id}` });
+    }
+
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    // Verificar cache
+    const cacheKey = `user_details_${id}`;
+    if (
+      cache[cacheKey] &&
+      Date.now() - cache[cacheKey].timestamp < CACHE_DURATION
+    ) {
+      return res.status(200).json(cache[cacheKey].data);
+    }
+
+    const [users] = await db.query(
+      `
+      SELECT u.id, u.name, u.email, u.role, u.created_at, u.cpf_cnpj, u.profile_picture,
+             agd.bio, agd.area_of_expertise, agd.birth_date, agd.address, agd.bank_details
+      FROM users u
+      LEFT JOIN artist_group_details agd ON u.id = agd.user_id
+      WHERE u.id = ? AND u.role IN ('artist', 'group')
+    `,
+      [id]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    const user = users[0];
+
+    // Parsear JSON fields
+    if (typeof user.address === "string") {
+      user.address = JSON.parse(user.address);
+    }
+    if (typeof user.bank_details === "string") {
+      user.bank_details = JSON.parse(user.bank_details);
+    }
+
+    // Converter profile_picture para Base64 de forma assíncrona
+    if (user.profile_picture) {
+      user.profile_picture = await new Promise((resolve) => {
+        resolve(Buffer.from(user.profile_picture).toString("base64"));
+      });
+    }
+
+    // Cachear resultado
+    cache[cacheKey] = {
+      data: user,
+      timestamp: Date.now(),
+    };
+
+    // Limpar cache após o tempo de expiração
+    setTimeout(() => delete cache[cacheKey], CACHE_DURATION);
+
+    res.status(200).json(user);
+  } catch (error) {
+    console.error("Erro ao buscar detalhes do usuário:", error);
+    res.status(500).json({ error: "Erro ao buscar detalhes do usuário" });
+  }
+});
 
 // POST /api/users/register - Registro de usuário (artist ou group)
 router.post(
@@ -142,17 +207,14 @@ router.post(
 
       const files = req.files;
 
-      // Validações básicas
       if (!name || !email || !password || !cpf_cnpj) {
         throw new Error("Nome, email, senha e CPF/CNPJ são obrigatórios");
       }
 
-      // Validar CPF/CNPJ
       if (!cpf.isValid(cpf_cnpj) && !cnpj.isValid(cpf_cnpj)) {
         throw new Error("CPF ou CNPJ inválido");
       }
 
-      // Verificar se email já existe
       const [existing] = await connection.query(
         "SELECT * FROM users WHERE email = ?",
         [email]
@@ -162,10 +224,7 @@ router.post(
         throw new Error("Email já está em uso");
       }
 
-      // Gerar um UUID para o usuário
       const userId = uuidv4();
-
-      // Inserir na tabela users
       const hashedPassword = await bcrypt.hash(password, 10);
       await connection.query(
         `INSERT INTO users (
@@ -183,7 +242,6 @@ router.post(
         ]
       );
 
-      // Inserir na tabela artist_group_details se for artista/grupo
       if (["artist", "group"].includes(role)) {
         await connection.query(
           `INSERT INTO artist_group_details (
@@ -253,7 +311,6 @@ router.get("/artists", authenticateToken, async (req, res) => {
 // GET /api/users/me - Buscar detalhes do usuário logado
 router.get("/me", authenticateToken, async (req, res) => {
   try {
-    // Validar se req.user.id é um UUID válido
     if (!isValidUUID(req.user.id)) {
       return res
         .status(400)
@@ -297,7 +354,6 @@ router.put(
   handleMulterError,
   async (req, res) => {
     try {
-      // Validar se req.user.id é um UUID válido
       if (!isValidUUID(req.user.id)) {
         return res
           .status(400)
@@ -311,7 +367,6 @@ router.put(
         ? files.profile_picture[0].buffer
         : null;
 
-      // Atualizar na tabela users
       await db.query(
         `
         UPDATE users
@@ -321,7 +376,6 @@ router.put(
         [name, profilePicture, req.user.id]
       );
 
-      // Atualizar na tabela artist_group_details (se for artist ou group)
       if (["artist", "group"].includes(req.user.role)) {
         await db.query(
           `
@@ -348,7 +402,6 @@ router.get("/me/events", authenticateToken, async (req, res) => {
       return res.status(403).json({ error: "Acesso negado" });
     }
 
-    // Validar se req.user.id é um UUID válido
     if (!isValidUUID(req.user.id)) {
       return res
         .status(400)
@@ -365,7 +418,6 @@ router.get("/me/events", authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    // Mapear is_paid para status
     const mappedEvents = events.map((event) => ({
       id: event.id,
       title: event.title,
@@ -407,29 +459,24 @@ router.post(
       } = req.body;
       const files = req.files;
 
-      // Validações básicas
       if (!name || !email || !password || !role) {
         return res.status(400).json({ error: "Campos obrigatórios ausentes" });
       }
 
-      // Validar role
       if (!["artist", "group"].includes(role)) {
         return res
           .status(400)
           .json({ error: "Role inválido. Use 'artist' ou 'group'" });
       }
 
-      // Verificar permissão
       if (!["admin", "secretary"].includes(req.user.role)) {
         return res.status(403).json({ error: "Acesso negado" });
       }
 
-      // Validar CPF/CNPJ
       if (!cpf_cnpj || (!cpf.isValid(cpf_cnpj) && !cnpj.isValid(cpf_cnpj))) {
         return res.status(400).json({ error: "CPF ou CNPJ inválido" });
       }
 
-      // Validar campos obrigatórios para artist/group
       if (["artist", "group"].includes(role)) {
         if (!address || !bank_details) {
           return res.status(400).json({
@@ -438,7 +485,6 @@ router.post(
           });
         }
 
-        // Validar estrutura do address (JSON)
         const addressObj =
           typeof address === "string" ? JSON.parse(address) : address;
         if (
@@ -455,7 +501,6 @@ router.post(
           });
         }
 
-        // Validar estrutura do bank_details (JSON)
         const bankDetailsObj =
           typeof bank_details === "string"
             ? JSON.parse(bank_details)
@@ -473,7 +518,6 @@ router.post(
         }
       }
 
-      // Verificar se email já existe
       const [existing] = await db.query("SELECT * FROM users WHERE email = ?", [
         email,
       ]);
@@ -482,15 +526,11 @@ router.post(
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
-
       const profilePicture = files?.profile_picture
         ? files.profile_picture[0].buffer
         : null;
-
-      // Gerar um UUID para o usuário
       const userId = uuidv4();
 
-      // Inserir na tabela users
       await db.query(
         `
         INSERT INTO users (id, name, email, password, role, cpf_cnpj, profile_picture, created_at)
@@ -499,7 +539,6 @@ router.post(
         [userId, name, email, hashedPassword, role, cpf_cnpj, profilePicture]
       );
 
-      // Inserir na tabela artist_group_details (se for artist ou group)
       if (["artist", "group"].includes(role)) {
         const portfolio = files?.portfolio ? files.portfolio[0].buffer : null;
         const video = files?.video ? files.video[0].buffer : null;
@@ -562,17 +601,14 @@ router.put(
       } = req.body;
       const files = req.files;
 
-      // Validar se o id é um UUID válido
       if (!isValidUUID(id)) {
         return res.status(400).json({ error: `ID inválido: ${id}` });
       }
 
-      // Verificar se o usuário tem permissão (admin ou secretary)
       if (!["admin", "secretary"].includes(req.user.role)) {
         return res.status(403).json({ error: "Acesso negado" });
       }
 
-      // Buscar usuário existente para preencher valores padrão
       const [users] = await db.query(
         `
         SELECT u.id, u.name, u.email, u.role, u.cpf_cnpj,
@@ -598,13 +634,11 @@ router.put(
           ? JSON.parse(existingUser.bank_details)
           : existingUser.bank_details;
 
-      // Se nenhum dado básico for enviado, apenas atualize os arquivos ou campos específicos
       let updatedName = name || existingUser.name;
       let updatedEmail = email || existingUser.email;
       let updatedRole = role || existingUser.role;
       let updatedCpfCnpj = cpf_cnpj || existingUser.cpf_cnpj;
 
-      // Validações apenas para os campos enviados
       if (email) {
         const [existingEmail] = await db.query(
           "SELECT * FROM users WHERE email = ? AND id != ?",
@@ -625,7 +659,6 @@ router.put(
           .json({ error: "Role inválido. Use 'artist' ou 'group'" });
       }
 
-      // Processar arquivos (se fornecidos)
       const profilePicture = files?.profile_picture
         ? files.profile_picture[0].buffer
         : null;
@@ -635,7 +668,6 @@ router.put(
         ? files.related_files[0].buffer
         : null;
 
-      // Atualizar na tabela users
       await db.query(
         `
         UPDATE users
@@ -652,19 +684,16 @@ router.put(
         ]
       );
 
-      // Atualizar na tabela artist_group_details (se for artist ou group)
       if (["artist", "group"].includes(updatedRole)) {
         const addressObj = address || existingAddress;
         const bankDetailsObj = bank_details || existingBankDetails;
 
-        // Verificar se o registro já existe em artist_group_details
         const [existingDetails] = await db.query(
           "SELECT * FROM artist_group_details WHERE user_id = ?",
           [id]
         );
 
         if (existingDetails.length > 0) {
-          // Atualizar registro existente
           await db.query(
             `
             UPDATE artist_group_details
@@ -695,7 +724,6 @@ router.put(
             ]
           );
         } else {
-          // Inserir novo registro (caso o usuário tenha mudado de role para artist/group)
           if (!addressObj || !bankDetailsObj) {
             return res.status(400).json({
               error:
@@ -722,6 +750,10 @@ router.put(
         }
       }
 
+      // Invalidar cache após atualização
+      const cacheKey = `user_details_${id}`;
+      delete cache[cacheKey];
+
       res.status(200).json({ message: "Usuário atualizado com sucesso" });
     } catch (error) {
       console.error("Erro ao atualizar usuário:", error);
@@ -730,66 +762,11 @@ router.put(
   }
 );
 
-// GET /api/users/details/:id - Buscar detalhes completos de um usuário
-router.get("/details/:id", authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // Validar se o id é um UUID válido
-    if (!isValidUUID(id)) {
-      return res.status(400).json({ error: `ID inválido: ${id}` });
-    }
-
-    // Verificar se o usuário tem permissão (admin ou secretary)
-    if (!["admin", "secretary"].includes(req.user.role)) {
-      return res.status(403).json({ error: "Acesso negado" });
-    }
-
-    const [users] = await db.query(
-      `
-      SELECT u.id, u.name, u.email, u.role, u.created_at, u.profile_picture,
-             agd.bio, agd.area_of_expertise, agd.portfolio, agd.video, agd.related_files,
-             agd.birth_date, agd.address, agd.bank_details
-      FROM users u
-      LEFT JOIN artist_group_details agd ON u.id = agd.user_id
-      WHERE u.id = ? AND u.role IN ('artist', 'group')
-    `,
-      [id]
-    );
-
-    if (users.length === 0) {
-      return res.status(404).json({ error: "Usuário não encontrado" });
-    }
-
-    const user = users[0];
-    if (user.profile_picture) {
-      user.profile_picture = Buffer.from(user.profile_picture).toString(
-        "base64"
-      );
-    }
-    if (user.portfolio) {
-      user.portfolio = Buffer.from(user.portfolio).toString("base64");
-    }
-    if (user.video) {
-      user.video = Buffer.from(user.video).toString("base64");
-    }
-    if (user.related_files) {
-      user.related_files = Buffer.from(user.related_files).toString("base64");
-    }
-
-    res.status(200).json(user);
-  } catch (error) {
-    console.error("Erro ao buscar detalhes do usuário:", error);
-    res.status(500).json({ error: "Erro ao buscar detalhes do usuário" });
-  }
-});
-
 // GET /api/users/:id - Buscar detalhes de um usuário
 router.get("/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Validar se o id é um UUID válido
     if (!isValidUUID(id)) {
       return res.status(400).json({ error: `ID inválido: ${id}` });
     }
@@ -816,7 +793,6 @@ router.get("/:id", authenticateToken, async (req, res) => {
 
     const user = users[0];
 
-    // Converter buffers para base64 se existirem
     if (user.profile_picture) {
       user.profile_picture = Buffer.from(user.profile_picture).toString(
         "base64"
@@ -832,7 +808,6 @@ router.get("/:id", authenticateToken, async (req, res) => {
       user.related_files = Buffer.from(user.related_files).toString("base64");
     }
 
-    // Parse JSON fields if they are strings
     if (typeof user.address === "string") {
       user.address = JSON.parse(user.address);
     }
@@ -852,34 +827,27 @@ router.delete("/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Validar se o id é um UUID válido
     if (!isValidUUID(id)) {
       return res.status(400).json({ error: `ID inválido: ${id}` });
     }
 
-    // Verificar se o usuário tem permissão (admin ou secretary)
     if (!["admin", "secretary"].includes(req.user.role)) {
       return res.status(403).json({ error: "Acesso negado" });
     }
 
-    // Verificar se o usuário existe
     const [user] = await db.query("SELECT * FROM users WHERE id = ?", [id]);
     if (user.length === 0) {
       return res.status(404).json({ error: "Usuário não encontrado" });
     }
 
-    // Iniciar transação
     const connection = await db.getConnection();
     await connection.beginTransaction();
 
     try {
-      // Deletar da tabela artist_group_details primeiro (se existir)
       await connection.query(
         "DELETE FROM artist_group_details WHERE user_id = ?",
         [id]
       );
-
-      // Deletar da tabela users
       const [result] = await connection.query(
         "DELETE FROM users WHERE id = ?",
         [id]
@@ -890,6 +858,8 @@ router.delete("/:id", authenticateToken, async (req, res) => {
       }
 
       await connection.commit();
+      const cacheKey = `user_details_${id}`;
+      delete cache[cacheKey];
       res.status(200).json({ message: "Usuário deletado com sucesso" });
     } catch (error) {
       await connection.rollback();
@@ -899,9 +869,7 @@ router.delete("/:id", authenticateToken, async (req, res) => {
     }
   } catch (error) {
     console.error("Erro ao deletar usuário:", error);
-    res.status(500).json({
-      error: error.message || "Erro ao deletar usuário",
-    });
+    res.status(500).json({ error: error.message || "Erro ao deletar usuário" });
   }
 });
 
@@ -911,31 +879,24 @@ router.put("/:id/password", authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { new_password } = req.body;
 
-    // Validar se o id é um UUID válido
     if (!isValidUUID(id)) {
       return res.status(400).json({ error: `ID inválido: ${id}` });
     }
 
-    // Verificar se o usuário tem permissão (admin ou secretary)
     if (!["admin", "secretary"].includes(req.user.role)) {
       return res.status(403).json({ error: "Acesso negado" });
     }
 
-    // Validar campos obrigatórios
     if (!new_password) {
       return res.status(400).json({ error: "Nova senha é obrigatória" });
     }
 
-    // Verificar se o usuário existe
     const [user] = await db.query("SELECT * FROM users WHERE id = ?", [id]);
     if (user.length === 0) {
       return res.status(404).json({ error: "Usuário não encontrado" });
     }
 
-    // Hash da nova senha
     const hashedPassword = await bcrypt.hash(new_password, 10);
-
-    // Atualizar senha
     await db.query("UPDATE users SET password = ? WHERE id = ?", [
       hashedPassword,
       id,
@@ -958,17 +919,14 @@ router.put(
     try {
       const { id, type } = req.params;
 
-      // Validar se o id é um UUID válido
       if (!isValidUUID(id)) {
         return res.status(400).json({ error: `ID inválido: ${id}` });
       }
 
-      // Verificar se o usuário tem permissão (admin ou secretary)
       if (!["admin", "secretary"].includes(req.user.role)) {
         return res.status(403).json({ error: "Acesso negado" });
       }
 
-      // Validar tipo de arquivo
       const validTypes = [
         "profile_picture",
         "portfolio",
@@ -979,7 +937,6 @@ router.put(
         return res.status(400).json({ error: "Tipo de arquivo inválido" });
       }
 
-      // Verificar se o usuário existe
       const [user] = await db.query("SELECT * FROM users WHERE id = ?", [id]);
       if (user.length === 0) {
         return res.status(404).json({ error: "Usuário não encontrado" });
@@ -990,7 +947,6 @@ router.put(
         return res.status(400).json({ error: "Nenhum arquivo enviado" });
       }
 
-      // Atualizar arquivo
       if (type === "profile_picture") {
         await db.query(
           `
@@ -1001,16 +957,15 @@ router.put(
           [file.buffer, id]
         );
       } else {
-        // Verificar se o registro existe em artist_group_details
         const [existingDetails] = await db.query(
           "SELECT * FROM artist_group_details WHERE user_id = ?",
           [id]
         );
 
         if (existingDetails.length === 0) {
-          return res.status(404).json({
-            error: "Detalhes do artista/grupo não encontrados",
-          });
+          return res
+            .status(404)
+            .json({ error: "Detalhes do artista/grupo não encontrados" });
         }
 
         await db.query(
@@ -1023,6 +978,9 @@ router.put(
         );
       }
 
+      const cacheKey = `user_details_${id}`;
+      delete cache[cacheKey];
+
       res.status(200).json({ message: `${type} atualizado com sucesso` });
     } catch (error) {
       console.error(`Erro ao atualizar ${type}:`, error);
@@ -1030,68 +988,5 @@ router.put(
     }
   }
 );
-
-// GET /api/users/:id/file/:type - Buscar arquivo específico do usuário
-router.get("/:id/file/:type", authenticateToken, async (req, res) => {
-  try {
-    const { id, type } = req.params;
-
-    // Validar se o id é um UUID válido
-    if (!isValidUUID(id)) {
-      return res.status(400).json({ error: `ID inválido: ${id}` });
-    }
-
-    // Verificar se o usuário tem permissão (admin ou secretary)
-    if (!["admin", "secretary"].includes(req.user.role)) {
-      return res.status(403).json({ error: "Acesso negado" });
-    }
-
-    // Validar tipo de arquivo
-    const validTypes = [
-      "profile_picture",
-      "portfolio",
-      "video",
-      "related_files",
-    ];
-    if (!validTypes.includes(type)) {
-      return res.status(400).json({ error: "Tipo de arquivo inválido" });
-    }
-
-    // Buscar arquivo
-    let fileData;
-    if (type === "profile_picture") {
-      const [users] = await db.query(
-        "SELECT profile_picture FROM users WHERE id = ?",
-        [id]
-      );
-      if (users.length === 0) {
-        return res.status(404).json({ error: "Usuário não encontrado" });
-      }
-      fileData = users[0].profile_picture;
-    } else {
-      const [details] = await db.query(
-        `SELECT ${type} FROM artist_group_details WHERE user_id = ?`,
-        [id]
-      );
-      if (details.length === 0) {
-        return res.status(404).json({
-          error: "Detalhes do artista/grupo não encontrados",
-        });
-      }
-      fileData = details[0][type];
-    }
-
-    if (!fileData) {
-      return res.status(404).json({ error: `${type} não encontrado` });
-    }
-
-    // Retornar arquivo como base64
-    const base64Data = Buffer.from(fileData).toString("base64");
-    res.status(200).json({ file: base64Data });
-  } catch (error) {
-    console.error(`Erro ao buscar ${type}:`, error);
-    res.status(500).json({ error: `Erro ao buscar ${type}` });
-  }
-});
 
 module.exports = router;
