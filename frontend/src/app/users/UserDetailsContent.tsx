@@ -8,7 +8,7 @@ import axios from "axios";
 import { toast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import Loading from "@/components/ui/loading";
-import { getToken } from "@/lib/auth";
+import { getToken } from "../../lib/auth";
 import { Separator } from "@/components/ui/separator";
 import { Pencil, User, Mail, Phone } from "lucide-react";
 

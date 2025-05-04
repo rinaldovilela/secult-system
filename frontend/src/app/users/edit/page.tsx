@@ -191,15 +191,6 @@ export default function EditUser() {
   const documentType = form.watch("documentType");
 
   const fetchUserData = useCallback(async () => {
-    const cachedData = localStorage.getItem(`${CACHE_KEY}_${id}`);
-    if (cachedData) {
-      const parsedData = JSON.parse(cachedData);
-      form.reset(parsedData.formData);
-      setProfilePreview(parsedData.profilePreview || null);
-      setDataFetched(true);
-      return;
-    }
-
     try {
       const token = getToken();
       if (!token) throw new Error("Token não encontrado");
@@ -208,7 +199,7 @@ export default function EditUser() {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: "application/json",
-          "Accept-Encoding": "gzip, deflate, br", // Solicitar compressão
+          "Accept-Encoding": "gzip, deflate, br",
         },
         maxRedirects: 0,
         withCredentials: false,
@@ -270,7 +261,6 @@ export default function EditUser() {
       setProfilePreview(preview);
       setDataFetched(true);
 
-      // Cache por 5 minutos (300000 ms)
       localStorage.setItem(
         `${CACHE_KEY}_${id}`,
         JSON.stringify({
@@ -283,34 +273,34 @@ export default function EditUser() {
     } catch (error) {
       console.error("Error fetching user data:", error);
       if (axios.isAxiosError(error) && error.response?.status === 431) {
-        toast({
-          title: "Erro de cabeçalho muito grande",
-          description:
-            "O servidor rejeitou a requisição devido a cabeçalhos excessivamente grandes. Tente novamente ou contacte o administrador.",
-          variant: "destructive",
+        form.setError("root", {
+          type: "manual",
+          message:
+            "Erro de cabeçalho muito grande. Tente novamente ou contacte o administrador.",
         });
       } else {
-        toast({
-          title: "Erro ao carregar usuário",
-          description:
-            "Não foi possível carregar os dados. Verifique a conexão ou tente novamente.",
-          variant: "destructive",
+        form.setError("root", {
+          type: "manual",
+          message:
+            "Erro ao carregar usuário. Verifique a conexão ou tente novamente.",
         });
       }
-      router.push("/search");
     }
-  }, [id, form, router]);
+  }, [id, form]);
 
   useEffect(() => {
     if (!id) {
-      router.push("/search");
+      form.setError("root", {
+        type: "manual",
+        message: "ID do usuário não encontrado.",
+      });
       return;
     }
 
     if (!isAuthLoading && !dataFetched) {
       fetchUserData();
     }
-  }, [isAuthLoading, dataFetched, id, router, fetchUserData]);
+  }, [isAuthLoading, dataFetched, id, form, fetchUserData]);
 
   const fetchAddressByCep = useMemo(
     () => async (cep: string) => {
@@ -329,10 +319,9 @@ export default function EditUser() {
         const data = response.data;
         if (data.erro) {
           setCepStatus("error");
-          toast({
-            title: "CEP não encontrado",
-            description: "Preencha os campos manualmente.",
-            variant: "destructive",
+          form.setError("address.cep", {
+            type: "manual",
+            message: "CEP não encontrado. Preencha os campos manualmente.",
           });
           return;
         }
@@ -346,10 +335,10 @@ export default function EditUser() {
         toast({ title: "Endereço preenchido com sucesso!" });
       } catch (error) {
         setCepStatus("error");
-        toast({
-          title: "Erro ao buscar CEP",
-          description: "Tente novamente ou preencha manualmente.",
-          variant: "destructive",
+        form.setError("address.cep", {
+          type: "manual",
+          message:
+            "Erro ao buscar CEP. Tente novamente ou preencha manualmente.",
         });
       } finally {
         setIsLoadingCep(false);
@@ -401,35 +390,74 @@ export default function EditUser() {
       if (values.bio) formDataToSend.append("bio", values.bio);
       if (values.area_of_expertise)
         formDataToSend.append("area_of_expertise", values.area_of_expertise);
-      if (values.birth_date)
+      if (values.birth_date) {
+        const [day, month, year] = values.birth_date.split("/").map(Number);
+        if (
+          !day ||
+          !month ||
+          !year ||
+          isNaN(day) ||
+          isNaN(month) ||
+          isNaN(year) ||
+          day > 31 ||
+          month > 12 ||
+          year < 1900
+        ) {
+          throw new Error("Data de nascimento inválida");
+        }
         formDataToSend.append(
           "birth_date",
-          values.birth_date.split("/").reverse().join("-")
+          `${year}-${month.toString().padStart(2, "0")}-${day
+            .toString()
+            .padStart(2, "0")}`
         );
+      }
 
-      formDataToSend.append(
-        "address",
-        JSON.stringify({
-          cep: values.address.cep.replace(/\D/g, ""),
-          logradouro: values.address.logradouro,
-          numero: values.address.numero,
-          complemento: values.address.complemento || "",
-          bairro: values.address.bairro,
-          cidade: values.address.cidade,
-          estado: values.address.estado,
-        })
-      );
+      const addressData = {
+        cep: values.address.cep.replace(/\D/g, ""),
+        logradouro: values.address.logradouro,
+        numero: values.address.numero,
+        complemento: values.address.complemento || "",
+        bairro: values.address.bairro,
+        cidade: values.address.cidade,
+        estado: values.address.estado,
+      };
 
-      formDataToSend.append(
-        "bank_details",
-        JSON.stringify({
-          bank_name: values.bank_details.bank_name,
-          account_type: values.bank_details.account_type,
-          agency: values.bank_details.agency,
-          account_number: values.bank_details.account_number,
-          pix_key: values.bank_details.pix_key || "",
-        })
-      );
+      const requiredAddressFields = [
+        "cep",
+        "logradouro",
+        "numero",
+        "bairro",
+        "cidade",
+        "estado",
+      ];
+      for (const field of requiredAddressFields) {
+        if (!addressData[field as keyof typeof addressData]) {
+          throw new Error(`O campo ${field} do endereço é obrigatório`);
+        }
+      }
+      formDataToSend.append("address", JSON.stringify(addressData));
+
+      const bankDetailsData = {
+        bank_name: values.bank_details.bank_name,
+        account_type: values.bank_details.account_type,
+        agency: values.bank_details.agency,
+        account_number: values.bank_details.account_number,
+        pix_key: values.bank_details.pix_key || "",
+      };
+
+      const requiredBankFields = [
+        "bank_name",
+        "account_type",
+        "agency",
+        "account_number",
+      ];
+      for (const field of requiredBankFields) {
+        if (!bankDetailsData[field as keyof typeof bankDetailsData]) {
+          throw new Error(`O campo ${field} dos dados bancários é obrigatório`);
+        }
+      }
+      formDataToSend.append("bank_details", JSON.stringify(bankDetailsData));
 
       if (values.profile_picture)
         formDataToSend.append("profile_picture", values.profile_picture);
@@ -438,6 +466,11 @@ export default function EditUser() {
       if (values.video) formDataToSend.append("video", values.video);
       if (values.related_files)
         formDataToSend.append("related_files", values.related_files);
+
+      console.log("Dados enviados no FormData:");
+      for (let [key, value] of formDataToSend.entries()) {
+        console.log(`${key}:`, value);
+      }
 
       await axios.put(`${BASE_URL}/api/users/${id}`, formDataToSend, {
         headers: {
@@ -449,16 +482,29 @@ export default function EditUser() {
         withCredentials: false,
       });
 
+      // Invalidar o cache após a atualização
+      localStorage.removeItem(`${CACHE_KEY}_${id}`);
+
+      // Recarregar os dados do servidor
+      setDataFetched(false);
+      await fetchUserData();
+
       toast({ title: "Usuário atualizado com sucesso!" });
-      router.push("/search");
     } catch (error) {
-      toast({
-        title: "Erro ao atualizar usuário",
-        description: axios.isAxiosError(error)
-          ? error.response?.data?.error || "Tente novamente"
-          : "Erro inesperado",
-        variant: "destructive",
-      });
+      console.error("Erro ao enviar atualização:", error);
+      if (axios.isAxiosError(error)) {
+        form.setError("root", {
+          type: "manual",
+          message:
+            error.response?.data?.error ||
+            "Erro ao atualizar usuário. Tente novamente.",
+        });
+      } else {
+        form.setError("root", {
+          type: "manual",
+          message: error.message || "Erro inesperado ao atualizar usuário.",
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -520,6 +566,15 @@ export default function EditUser() {
               className="space-y-6"
               aria-label="Formulário de edição de usuário"
             >
+              <FormField
+                control={form.control}
+                name="root"
+                render={() => (
+                  <FormItem>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <div className="bg-muted/50 p-6 rounded-lg space-y-4 animate-in fade-in duration-500">
                 <h2 className="text-xl font-semibold text-foreground">
                   Dados Pessoais
@@ -1106,17 +1161,19 @@ export default function EditUser() {
                           <Image
                             src={profilePreview}
                             alt="Prévia da foto de perfil"
-                            fill
-                            className="object-cover"
+                            layout="fill"
+                            objectFit="cover"
+                            className="rounded-full"
                           />
                         </div>
-                      ) : dataFetched ? null : (
-                        <div className="mt-2 h-40 w-40 relative rounded-full overflow-hidden shadow-sm">
-                          <Skeleton className="h-full w-full bg-muted-foreground/20 rounded-full" />
+                      ) : (
+                        <div className="mt-2 h-40 w-40 bg-muted-foreground/20 rounded-full flex items-center justify-center">
+                          <ImageIcon className="w-10 h-10 text-muted-foreground" />
                         </div>
                       )}
                       <FormDescription>
-                        Tamanho máximo: {MAX_FILE_SIZE / (1024 * 1024)}MB
+                        Máximo {MAX_FILE_SIZE / (1024 * 1024)}MB. Formatos
+                        aceitos: JPG, PNG, GIF.
                       </FormDescription>
                       <FormMessage id="profile_picture-error" />
                     </FormItem>
@@ -1129,25 +1186,21 @@ export default function EditUser() {
                     <FormItem>
                       <FormLabel className="flex items-center gap-2 text-muted-foreground">
                         <FileText className="w-5 h-5 text-primary" />
-                        Portfólio (PDF)
+                        Portfólio
                       </FormLabel>
                       <FormControl>
                         <Input
                           type="file"
-                          accept="application/pdf"
+                          accept=".pdf"
                           onChange={(e) => handleFileChange("portfolio", e)}
                           disabled={isSubmitting}
                           className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
                           aria-describedby="portfolio-error"
                         />
                       </FormControl>
-                      {field.value && (
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          {field.value.name}
-                        </p>
-                      )}
                       <FormDescription>
-                        Tamanho máximo: {MAX_FILE_SIZE / (1024 * 1024)}MB
+                        Máximo {MAX_FILE_SIZE / (1024 * 1024)}MB. Formato
+                        aceito: PDF.
                       </FormDescription>
                       <FormMessage id="portfolio-error" />
                     </FormItem>
@@ -1165,20 +1218,16 @@ export default function EditUser() {
                       <FormControl>
                         <Input
                           type="file"
-                          accept="video/mp4,video/webm,video/ogg"
+                          accept="video/mp4,video/mpeg,video/webm"
                           onChange={(e) => handleFileChange("video", e)}
                           disabled={isSubmitting}
                           className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
                           aria-describedby="video-error"
                         />
                       </FormControl>
-                      {field.value && (
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          {field.value.name}
-                        </p>
-                      )}
                       <FormDescription>
-                        Tamanho máximo: {MAX_FILE_SIZE / (1024 * 1024)}MB
+                        Máximo {MAX_FILE_SIZE / (1024 * 1024)}MB. Formatos
+                        aceitos: MP4, MPEG, WEBM.
                       </FormDescription>
                       <FormMessage id="video-error" />
                     </FormItem>
@@ -1196,19 +1245,16 @@ export default function EditUser() {
                       <FormControl>
                         <Input
                           type="file"
+                          accept=".pdf"
                           onChange={(e) => handleFileChange("related_files", e)}
                           disabled={isSubmitting}
                           className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
                           aria-describedby="related_files-error"
                         />
                       </FormControl>
-                      {field.value && (
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          {field.value.name}
-                        </p>
-                      )}
                       <FormDescription>
-                        Tamanho máximo: {MAX_FILE_SIZE / (1024 * 1024)}MB
+                        Máximo {MAX_FILE_SIZE / (1024 * 1024)}MB. Formato
+                        aceito: PDF.
                       </FormDescription>
                       <FormMessage id="related_files-error" />
                     </FormItem>
@@ -1216,34 +1262,21 @@ export default function EditUser() {
                 />
               </div>
 
-              <div
-                className="flex gap-4 pt-4 animate-in fade-in duration-500"
-                style={{ animationDelay: "400ms" }}
-              >
+              <div className="flex justify-end mt-8">
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground shadow-md transition-all duration-300 active:scale-95"
-                  aria-label="Salvar alterações do usuário"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-all duration-300 active:scale-95 px-6 py-2 rounded-md flex items-center gap-2"
+                  aria-label="Salvar alterações"
                 >
                   {isSubmitting ? (
                     <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />{" "}
+                      <Loader2 className="w-5 h-5 animate-spin" />
                       Salvando...
                     </>
                   ) : (
                     "Salvar"
                   )}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => router.push("/search")}
-                  disabled={isSubmitting}
-                  className="w-full border-muted-foreground/20 text-muted-foreground hover:bg-muted/20 shadow-sm transition-all duration-300 active:scale-95"
-                  aria-label="Cancelar edição"
-                >
-                  Cancelar
                 </Button>
               </div>
             </form>

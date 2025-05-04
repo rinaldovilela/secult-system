@@ -7,7 +7,7 @@ const bcrypt = require("bcrypt");
 const multer = require("multer");
 const cpfCnpjValidator = require("cpf-cnpj-validator");
 const { cpf, cnpj } = cpfCnpjValidator;
-const compression = require("compression"); // Adicionando compressão
+const compression = require("compression");
 
 // Cache em memória
 const cache = {};
@@ -53,6 +53,7 @@ const validateArtistData = async (req, res, next) => {
         typeof req.body.address === "string"
           ? JSON.parse(req.body.address)
           : req.body.address;
+      console.log("Address recebido:", address); // Log para depuração
       if (
         address &&
         (!address.cep ||
@@ -78,6 +79,7 @@ const validateArtistData = async (req, res, next) => {
         typeof req.body.bank_details === "string"
           ? JSON.parse(req.body.bank_details)
           : req.body.bank_details;
+      console.log("Bank Details recebido:", bankDetails); // Log para depuração
       if (
         bankDetails &&
         (!bankDetails.bank_name ||
@@ -98,6 +100,7 @@ const validateArtistData = async (req, res, next) => {
       if (address) req.body.address = address;
       if (bankDetails) req.body.bank_details = bankDetails;
     } catch (error) {
+      console.error("Erro ao parsear address ou bank_details:", error.message); // Log para depuração
       return res
         .status(400)
         .json({ error: "Erro ao processar JSON", details: error.message });
@@ -145,7 +148,6 @@ router.get("/details/:id", authenticateToken, async (req, res) => {
 
     const user = users[0];
 
-    // Parsear JSON fields
     if (typeof user.address === "string") {
       user.address = JSON.parse(user.address);
     }
@@ -153,20 +155,17 @@ router.get("/details/:id", authenticateToken, async (req, res) => {
       user.bank_details = JSON.parse(user.bank_details);
     }
 
-    // Converter profile_picture para Base64 de forma assíncrona
     if (user.profile_picture) {
       user.profile_picture = await new Promise((resolve) => {
         resolve(Buffer.from(user.profile_picture).toString("base64"));
       });
     }
 
-    // Cachear resultado
     cache[cacheKey] = {
       data: user,
       timestamp: Date.now(),
     };
 
-    // Limpar cache após o tempo de expiração
     setTimeout(() => delete cache[cacheKey], CACHE_DURATION);
 
     res.status(200).json(user);
@@ -219,7 +218,6 @@ router.post(
         "SELECT * FROM users WHERE email = ?",
         [email]
       );
-
       if (existing.length > 0) {
         throw new Error("Email já está em uso");
       }
@@ -601,11 +599,28 @@ router.put(
       } = req.body;
       const files = req.files;
 
+      // Log para depuração
+      console.log("Dados recebidos no PUT /api/users/:id:", {
+        id,
+        name,
+        email,
+        bio,
+        area_of_expertise,
+        role,
+        cpf_cnpj,
+        birth_date,
+        address,
+        bank_details,
+        files: files ? Object.keys(files) : null,
+      });
+
       if (!isValidUUID(id)) {
+        console.log("ID inválido:", id);
         return res.status(400).json({ error: `ID inválido: ${id}` });
       }
 
       if (!["admin", "secretary"].includes(req.user.role)) {
+        console.log("Acesso negado para o usuário:", req.user.role);
         return res.status(403).json({ error: "Acesso negado" });
       }
 
@@ -621,6 +636,7 @@ router.put(
       );
 
       if (users.length === 0) {
+        console.log("Usuário não encontrado:", id);
         return res.status(404).json({ error: "Usuário não encontrado" });
       }
 
@@ -645,15 +661,18 @@ router.put(
           [email, id]
         );
         if (existingEmail.length > 0) {
+          console.log("Email já está em uso:", email);
           return res.status(400).json({ error: "Email já está em uso" });
         }
       }
 
       if (cpf_cnpj && !cpf.isValid(cpf_cnpj) && !cnpj.isValid(cpf_cnpj)) {
+        console.log("CPF ou CNPJ inválido:", cpf_cnpj);
         return res.status(400).json({ error: "CPF ou CNPJ inválido" });
       }
 
       if (role && !["artist", "group"].includes(role)) {
+        console.log("Role inválida:", role);
         return res
           .status(400)
           .json({ error: "Role inválido. Use 'artist' ou 'group'" });
@@ -725,6 +744,10 @@ router.put(
           );
         } else {
           if (!addressObj || !bankDetailsObj) {
+            console.log("Endereço ou dados bancários ausentes:", {
+              addressObj,
+              bankDetailsObj,
+            });
             return res.status(400).json({
               error:
                 "Endereço e dados bancários são obrigatórios para artistas/grupos",
@@ -750,7 +773,6 @@ router.put(
         }
       }
 
-      // Invalidar cache após atualização
       const cacheKey = `user_details_${id}`;
       delete cache[cacheKey];
 
