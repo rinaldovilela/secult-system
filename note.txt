@@ -19,3 +19,42 @@ ALTER TABLE event_artists ADD PRIMARY KEY (event_id, user_id);
 
 CREATE INDEX idx_users_id ON users(id);
 CREATE INDEX idx_artist_group_details_user_id ON artist_group_details(user_id);
+
+
+
+-- Alterar tabela users
+ALTER TABLE users
+  DROP COLUMN profile_picture,
+  ADD COLUMN profile_picture_link VARCHAR(255) NULL,
+  ADD COLUMN profile_picture_size BIGINT NULL,
+  ADD COLUMN profile_picture_uploaded_at DATETIME NULL;
+
+-- Alterar tabela artist_group_details
+ALTER TABLE artist_group_details
+  DROP COLUMN portfolio,
+  DROP COLUMN video,
+  DROP COLUMN related_files,
+  ADD COLUMN portfolio_link VARCHAR(255) NULL,
+  ADD COLUMN portfolio_size BIGINT NULL,
+  ADD COLUMN portfolio_uploaded_at DATETIME NULL,
+  ADD COLUMN video_link VARCHAR(255) NULL,
+  ADD COLUMN video_size BIGINT NULL,
+  ADD COLUMN video_uploaded_at DATETIME NULL,
+  ADD COLUMN related_files_link VARCHAR(255) NULL,
+  ADD COLUMN related_files_size BIGINT NULL,
+  ADD COLUMN related_files_uploaded_at DATETIME NULL;
+
+-- Alterar tabela event_artists
+ALTER TABLE event_artists
+  DROP COLUMN payment_proof,
+  DROP COLUMN payment_proof_mime_type,
+  ADD COLUMN payment_proof_link VARCHAR(255) NULL,
+  ADD COLUMN payment_proof_size BIGINT NULL,
+  ADD COLUMN payment_proof_uploaded_at DATETIME NULL;
+
+-- Alterar tabela event_reports
+ALTER TABLE event_reports
+  DROP COLUMN file_data,
+  ADD COLUMN file_link VARCHAR(255) NULL,
+  ADD COLUMN file_size BIGINT NULL,
+  ADD COLUMN file_uploaded_at DATETIME NULL;

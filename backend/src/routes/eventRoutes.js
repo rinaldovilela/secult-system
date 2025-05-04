@@ -1,101 +1,78 @@
 const express = require("express");
-const { v4: uuidv4 } = require("uuid"); // Importar a função v4 para gerar UUIDs
+const { v4: uuidv4 } = require("uuid");
 const db = require("../config/db");
 const { authenticateToken, authorizeRole } = require("../middleware/auth");
 const multer = require("multer");
+const {
+  ensureFolderStructure,
+  uploadFile,
+  deleteFile, // Nova função adicionada
+} = require("../utils/google-drive-config");
 
 const router = express.Router();
 
-// Configuração do Multer para armazenar arquivos em memória (iremos salvar no banco de dados)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024, // Limite de 10MB por arquivo
-  },
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = [
       "image/jpeg",
       "image/png",
       "application/pdf",
       "video/mp4",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ];
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error("Tipo de arquivo não permitido"), false);
-    }
+    if (allowedTypes.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Tipo de arquivo não permitido"), false);
   },
 });
 
-// Função auxiliar para validar UUID
-const isValidUUID = (uuid) => {
-  const uuidRegex =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  return uuidRegex.test(uuid);
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res
+        .status(400)
+        .json({ error: "Arquivo muito grande. O limite é 10MB." });
+    }
+    if (err.code === "LIMIT_UNEXPECTED_FILE") {
+      return res.status(400).json({
+        error: `Campo inesperado: ${err.field}. Esperado: payment_proof.`,
+      });
+    }
+    return res.status(400).json({ error: err.message });
+  }
+  next(err);
 };
 
-// Função auxiliar para criar uma notificação e emitir evento WebSocket
+const isValidUUID = (uuid) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
+
 const createNotification = async (req, userId, type, message) => {
   try {
-    // Validar se o userId é um UUID válido
-    if (!isValidUUID(userId)) {
-      console.error(`[createNotification] userId inválido: ${userId}`);
-      return;
-    }
-
-    console.log(
-      `[createNotification] Criando notificação para userId: ${userId}, tipo: ${type}`
-    );
-
-    // Gerar um UUID para o campo id
+    if (!isValidUUID(userId)) return;
     const notificationId = uuidv4();
-
-    // Inserir a notificação com o id gerado
     await db.query(
-      `
-      INSERT INTO notifications (id, user_id, type, message, is_read, created_at)
-      VALUES (?, ?, ?, ?, ?, NOW())
-    `,
+      `INSERT INTO notifications (id, user_id, type, message, is_read, created_at) VALUES (?, ?, ?, ?, ?, NOW())`,
       [notificationId, userId, type, message, false]
     );
-
-    const notification = {
-      id: notificationId, // Usar o UUID gerado
-      user_id: userId,
-      type,
-      message,
-      is_read: false,
-      created_at: new Date().toISOString(),
-    };
-
     const io = req.app.get("io");
-    if (!io) {
-      console.error(
-        "[createNotification] Erro: io não está definido no req.app"
-      );
-      return;
-    }
-
-    console.log(
-      `[createNotification] Emitindo notificação para userId: ${userId}`,
-      notification
-    );
-    io.to(userId.toString()).emit("new_notification", notification);
+    if (io)
+      io.to(userId.toString()).emit("new_notification", {
+        id: notificationId,
+        user_id: userId,
+        type,
+        message,
+        is_read: false,
+        created_at: new Date().toISOString(),
+      });
   } catch (error) {
-    console.error(
-      `[createNotification] Erro ao criar notificação para userId: ${userId}`,
-      error
-    );
+    console.error(`[createNotification] Erro para userId: ${userId}`, error);
   }
 };
 
-// POST /api/events - Cadastro de eventos (apenas admin e secretary podem cadastrar)
+// POST /api/events - Criar um novo evento (apenas admin e secretary)
 router.post("/", authenticateToken, async (req, res) => {
   try {
-    const { title, description, date, location, target_audience, artists } =
-      req.body;
+    const { title, description, date, location, target_audience } = req.body;
 
     if (!title || !date || !location || !target_audience) {
       return res.status(400).json({ error: "Campos obrigatórios ausentes" });
@@ -105,23 +82,14 @@ router.post("/", authenticateToken, async (req, res) => {
       return res.status(403).json({ error: "Acesso negado" });
     }
 
-    let formattedDate;
-    try {
-      formattedDate = new Date(date)
-        .toISOString()
-        .slice(0, 19)
-        .replace("T", " ");
-    } catch (error) {
-      return res.status(400).json({ error: "Formato de data inválido" });
-    }
-
+    const formattedDate = new Date(date)
+      .toISOString()
+      .slice(0, 19)
+      .replace("T", " ");
     const eventId = uuidv4();
 
     await db.query(
-      `
-      INSERT INTO events (id, title, description, date, location, target_audience, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, NOW())
-    `,
+      `INSERT INTO events (id, title, description, date, location, target_audience, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
       [
         eventId,
         title,
@@ -132,36 +100,87 @@ router.post("/", authenticateToken, async (req, res) => {
       ]
     );
 
-    if (artists && artists.length > 0) {
-      for (const artist of artists) {
-        const { artist_id, amount } = artist;
-
-        if (!isValidUUID(artist_id)) {
-          return res
-            .status(400)
-            .json({ error: `artist_id inválido: ${artist_id}` });
-        }
-
-        await db.query(
-          "INSERT INTO event_artists (event_id, user_id, amount, is_paid) VALUES (?, ?, ?, ?)",
-          [eventId, artist_id, amount, false]
-        );
-
-        await createNotification(
-          req,
-          artist_id,
-          "new_event",
-          `Você foi adicionado ao evento '${title}' agendado para ${new Date(
-            date
-          ).toLocaleDateString()}.`
-        );
-      }
-    }
-
     res.status(201).json({ message: "Evento criado com sucesso", eventId });
   } catch (error) {
-    console.error("Erro ao criar evento:", error);
+    console.error("[POST /events] Erro:", error);
     res.status(500).json({ error: "Erro ao criar evento" });
+  }
+});
+
+// POST /api/events/:id/artists - Adicionar um artista a um evento
+router.post("/:id/artists", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { artist_id, amount } = req.body;
+
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: `id inválido: ${id}` });
+    }
+    if (!isValidUUID(artist_id)) {
+      return res
+        .status(400)
+        .json({ error: `artist_id inválido: ${artist_id}` });
+    }
+
+    if (!artist_id || !amount) {
+      return res.status(400).json({ error: "Campos obrigatórios ausentes" });
+    }
+
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    const [events] = await db.query("SELECT * FROM events WHERE id = ?", [id]);
+    if (events.length === 0) {
+      return res.status(404).json({ error: "Evento não encontrado" });
+    }
+
+    const event = events[0];
+
+    const [artists] = await db.query(
+      "SELECT * FROM users WHERE id = ? AND role IN ('artist', 'group')",
+      [artist_id]
+    );
+    if (artists.length === 0) {
+      return res.status(404).json({ error: "Artista ou grupo não encontrado" });
+    }
+
+    const [existing] = await db.query(
+      "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
+      [id, artist_id]
+    );
+    if (existing.length > 0) {
+      return res
+        .status(400)
+        .json({ error: "Artista ou grupo já está associado ao evento" });
+    }
+
+    await db.query(
+      "INSERT INTO event_artists (event_id, user_id, amount, is_paid) VALUES (?, ?, ?, ?)",
+      [id, artist_id, amount, false]
+    );
+
+    console.log(
+      `[POST /events/:id/artists] Gerando notificação para artistId: ${artist_id}`
+    );
+    await createNotification(
+      req,
+      artist_id,
+      "artist_added",
+      `Você foi adicionado ao evento '${event.title}' agendado para ${new Date(
+        event.date
+      ).toLocaleDateString("pt-BR")}.`
+    );
+
+    res
+      .status(201)
+      .json({ message: "Artista ou grupo adicionado ao evento com sucesso" });
+  } catch (error) {
+    console.error(
+      "[POST /events/:id/artists] Erro ao adicionar artista ao evento:",
+      error
+    );
+    res.status(500).json({ error: "Erro ao adicionar artista ao evento" });
   }
 });
 
@@ -300,83 +319,6 @@ router.put("/:id", authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/events/:id/artists - Adicionar um artista a um evento
-router.post("/:id/artists", authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { artist_id, amount } = req.body;
-
-    if (!isValidUUID(id)) {
-      return res.status(400).json({ error: `id inválido: ${id}` });
-    }
-    if (!isValidUUID(artist_id)) {
-      return res
-        .status(400)
-        .json({ error: `artist_id inválido: ${artist_id}` });
-    }
-
-    if (!artist_id || !amount) {
-      return res.status(400).json({ error: "Campos obrigatórios ausentes" });
-    }
-
-    if (!["admin", "secretary"].includes(req.user.role)) {
-      return res.status(403).json({ error: "Acesso negado" });
-    }
-
-    const [events] = await db.query("SELECT * FROM events WHERE id = ?", [id]);
-    if (events.length === 0) {
-      return res.status(404).json({ error: "Evento não encontrado" });
-    }
-
-    const event = events[0];
-
-    const [artists] = await db.query(
-      "SELECT * FROM users WHERE id = ? AND role IN ('artist', 'group')",
-      [artist_id]
-    );
-    if (artists.length === 0) {
-      return res.status(404).json({ error: "Artista ou grupo não encontrado" });
-    }
-
-    const [existing] = await db.query(
-      "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
-      [id, artist_id]
-    );
-    if (existing.length > 0) {
-      return res
-        .status(400)
-        .json({ error: "Artista ou grupo já está associado ao evento" });
-    }
-
-    await db.query(
-      "INSERT INTO event_artists (event_id, user_id, amount, is_paid) VALUES (?, ?, ?, ?)",
-      [id, artist_id, amount, false]
-    );
-
-    console.log(
-      `[POST /events/:id/artists] Gerando notificação para artistId: ${artist_id}`
-    );
-    await createNotification(
-      req,
-      artist_id,
-      "artist_added",
-      `Você foi adicionado ao evento '${event.title}' agendado para ${new Date(
-        event.date
-      ).toLocaleDateString("pt-BR")}.`
-    );
-
-    res
-      .status(201)
-      .json({ message: "Artista ou grupo adicionado ao evento com sucesso" });
-  } catch (error) {
-    console.error(
-      "[POST /events/:id/artists] Erro ao adicionar artista ao evento:",
-      error
-    );
-    res.status(500).json({ error: "Erro ao adicionar artista ao evento" });
-  }
-});
-
 // DELETE /api/events/:id/artists/:artistId - Remover um artista de um evento
 router.delete("/:id/artists/:artistId", authenticateToken, async (req, res) => {
   try {
@@ -408,6 +350,11 @@ router.delete("/:id/artists/:artistId", authenticateToken, async (req, res) => {
       return res
         .status(404)
         .json({ error: "Artista ou grupo não encontrado no evento" });
+    }
+
+    // Deletar o comprovante de pagamento do Google Drive, se existir
+    if (existing[0].payment_proof_link) {
+      await deleteFile(existing[0].payment_proof_link);
     }
 
     await db.query(
@@ -444,82 +391,67 @@ router.patch(
   "/:id/artists/:artistId",
   authenticateToken,
   upload.single("payment_proof"),
+  handleMulterError,
   async (req, res) => {
     try {
       const { id, artistId } = req.params;
-      const { is_paid, amount } = req.body; // is_paid será uma string ("true" ou "false")
+      const { is_paid, amount } = req.body;
       const paymentProof = req.file;
 
-      if (!isValidUUID(id)) {
-        return res.status(400).json({ error: `id inválido: ${id}` });
-      }
-      if (!isValidUUID(artistId)) {
-        return res
-          .status(400)
-          .json({ error: `artistId inválido: ${artistId}` });
-      }
-
-      // Converter is_paid de string para booleano
-      let parsedIsPaid;
-      if (is_paid !== undefined) {
-        if (is_paid === "true") {
-          parsedIsPaid = true;
-        } else if (is_paid === "false") {
-          parsedIsPaid = false;
-        } else {
-          return res
-            .status(400)
-            .json({ error: "O campo is_paid deve ser 'true' ou 'false'" });
-        }
-      }
-
-      if (amount !== undefined && (isNaN(amount) || amount <= 0)) {
-        return res
-          .status(400)
-          .json({ error: "O campo amount deve ser um número positivo" });
-      }
-
-      if (!["admin", "secretary"].includes(req.user.role)) {
+      if (!isValidUUID(id) || !isValidUUID(artistId))
+        return res.status(400).json({ error: "IDs inválidos" });
+      let parsedIsPaid =
+        is_paid === "true" ? true : is_paid === "false" ? false : undefined;
+      if (amount !== undefined && (isNaN(amount) || amount <= 0))
+        return res.status(400).json({ error: "Amount inválido" });
+      if (!["admin", "secretary"].includes(req.user.role))
         return res.status(403).json({ error: "Acesso negado" });
-      }
 
       const [events] = await db.query("SELECT * FROM events WHERE id = ?", [
         id,
       ]);
-      if (events.length === 0) {
+      if (events.length === 0)
         return res.status(404).json({ error: "Evento não encontrado" });
-      }
-
-      const event = events[0];
 
       const [existing] = await db.query(
         "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
         [id, artistId]
       );
-      if (existing.length === 0) {
+      if (existing.length === 0)
         return res
           .status(404)
-          .json({ error: "Artista ou grupo não encontrado no evento" });
-      }
+          .json({ error: "Artista não encontrado no evento" });
 
       const updates = {};
       if (parsedIsPaid !== undefined) updates.is_paid = parsedIsPaid;
       if (amount !== undefined) updates.amount = amount;
 
-      // Comprovante de pagamento é opcional, só atualiza se o arquivo for enviado
       if (paymentProof) {
-        updates.payment_proof = paymentProof.buffer;
-        updates.payment_proof_mime_type = paymentProof.mimetype;
+        // Deletar o arquivo antigo do Google Drive, se existir
+        if (existing[0].payment_proof_link) {
+          await deleteFile(existing[0].payment_proof_link);
+        }
+
+        const eventFolderId = await ensureFolderStructure(null, id); // Pasta do evento
+        const timestamp = new Date().toISOString().replace(/[:.-]/g, "");
+        const fileName = `usuario_${artistId}_evento_${id}_${timestamp}_${paymentProof.originalname}`;
+        const result = await uploadFile(paymentProof, eventFolderId, fileName);
+        updates.payment_proof_link = result.link;
+        updates.payment_proof_size = result.size;
+        updates.payment_proof_uploaded_at = new Date();
       } else if (parsedIsPaid === false) {
-        // Se marcar como "pendente", remove o comprovante (se existir)
-        updates.payment_proof = null;
-        updates.payment_proof_mime_type = null;
+        // Deletar o arquivo do Google Drive ao remover o comprovante
+        if (existing[0].payment_proof_link) {
+          await deleteFile(existing[0].payment_proof_link);
+        }
+        updates.payment_proof_link = null;
+        updates.payment_proof_size = null;
+        updates.payment_proof_uploaded_at = null;
       }
 
       const fields = Object.keys(updates);
-      if (fields.length === 0) {
+      if (fields.length === 0)
         return res.status(400).json({ error: "Nenhum campo para atualizar" });
-      }
 
       const setClause = fields.map((field) => `${field} = ?`).join(", ");
       const values = fields.map((field) => updates[field]);
@@ -529,31 +461,23 @@ router.patch(
         [...values, id, artistId]
       );
 
-      console.log(
-        `[PATCH /events/:id/artists/:artistId] Gerando notificação para artistId: ${artistId}`
-      );
       if (parsedIsPaid !== undefined) {
         await createNotification(
           req,
           artistId,
           "payment_status_updated",
-          `O status de pagamento do evento '${event.title}' foi atualizado para ${
-            parsedIsPaid ? "Pago" : "Pendente"
-          }.`
+          `Status de pagamento atualizado para ${parsedIsPaid ? "Pago" : "Pendente"} no evento '${events[0].title}'`
         );
       }
 
       res.status(200).json({ message: "Artista atualizado com sucesso" });
     } catch (error) {
-      console.error(
-        "[PATCH /events/:id/artists/:artistId] Erro ao atualizar artista:",
-        error
-      );
+      console.error("[PATCH /events/:id/artists/:artistId] Erro:", error);
       res.status(500).json({ error: "Erro ao atualizar artista" });
     }
   }
 );
-// GET /api/events/details/:id - Buscar detalhes completos de um evento (apenas admin ou secretary)
+
 // GET /api/events/details/:id - Buscar detalhes completos de um evento (apenas admin ou secretary)
 router.get("/details/:id", authenticateToken, async (req, res) => {
   try {
@@ -616,53 +540,47 @@ router.post(
   "/:id/reports",
   authenticateToken,
   upload.single("file"),
+  handleMulterError,
   async (req, res) => {
     try {
       const { id } = req.params;
-      const { file_type, description } = req.body;
+      const { description } = req.body;
       const file = req.file;
 
-      if (!isValidUUID(id)) {
-        return res.status(400).json({ error: `id inválido: ${id}` });
-      }
-
-      if (!["admin", "secretary"].includes(req.user.role)) {
+      if (!isValidUUID(id))
+        return res.status(400).json({ error: "ID inválido" });
+      if (!["admin", "secretary"].includes(req.user.role))
         return res.status(403).json({ error: "Acesso negado" });
-      }
-
-      if (!file || !file_type) {
-        return res
-          .status(400)
-          .json({ error: "Arquivo e tipo de arquivo são obrigatórios" });
-      }
-
-      if (!["photo", "video", "document"].includes(file_type)) {
-        return res.status(400).json({ error: "Tipo de arquivo inválido" });
-      }
+      if (!file)
+        return res.status(400).json({ error: "Arquivo é obrigatório" });
 
       const [events] = await db.query("SELECT * FROM events WHERE id = ?", [
         id,
       ]);
-      if (events.length === 0) {
+      if (events.length === 0)
         return res.status(404).json({ error: "Evento não encontrado" });
-      }
 
+      const eventFolderId = await ensureFolderStructure(null, id);
+      const timestamp = new Date().toISOString().replace(/[:.-]/g, "");
+      const fileName = `evento_${id}_${timestamp}_${file.originalname}`;
+      const result = await uploadFile(file, eventFolderId, fileName);
       const reportId = uuidv4();
 
       await db.query(
-        `
-        INSERT INTO event_reports (id, event_id, file_data, file_type, description, created_at)
-        VALUES (?, ?, ?, ?, ?, NOW())
-      `,
-        [reportId, id, file.buffer, file_type, description || null]
+        `INSERT INTO event_reports (id, event_id, file_link, file_size, file_uploaded_at, description, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          reportId,
+          id,
+          result.link,
+          result.size,
+          new Date(),
+          description || null,
+        ]
       );
 
       res.status(201).json({ message: "Relatório adicionado com sucesso" });
     } catch (error) {
-      console.error(
-        "[POST /events/:id/reports] Erro ao adicionar relatório:",
-        error
-      );
+      console.error("[POST /events/:id/reports] Erro:", error);
       res.status(500).json({ error: "Erro ao adicionar relatório" });
     }
   }
@@ -705,52 +623,54 @@ router.get("/:id/reports", authenticateToken, async (req, res) => {
   }
 });
 
-// Rota para servir arquivos de relatórios
-router.get(
-  "/files/event_reports/:eventId/:reportId",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { eventId, reportId } = req.params;
+// DELETE /api/events/:id/reports/:reportId - Deletar um relatório de um evento
+router.delete("/:id/reports/:reportId", authenticateToken, async (req, res) => {
+  try {
+    const { id, reportId } = req.params;
 
-      if (!isValidUUID(eventId) || !isValidUUID(reportId)) {
-        return res.status(400).json({ error: "IDs inválidos" });
-      }
-
-      if (!["admin", "secretary"].includes(req.user.role)) {
-        return res.status(403).json({ error: "Acesso negado" });
-      }
-
-      const [reports] = await db.query(
-        `
-        SELECT er.file_data, er.file_type
-        FROM event_reports er
-        WHERE er.id = ? AND er.event_id = ?
-      `,
-        [reportId, eventId]
-      );
-
-      if (reports.length === 0) {
-        return res.status(404).json({ error: "Relatório não encontrado" });
-      }
-
-      const report = reports[0];
-      let mimeType;
-      if (report.file_type === "photo") mimeType = "image/jpeg";
-      else if (report.file_type === "video") mimeType = "video/mp4";
-      else if (report.file_type === "document") mimeType = "application/pdf";
-
-      res.setHeader("Content-Type", mimeType);
-      res.send(report.file_data);
-    } catch (error) {
-      console.error(
-        "[GET /files/event_reports/:eventId/:reportId] Erro ao buscar arquivo:",
-        error
-      );
-      res.status(500).json({ error: "Erro ao buscar arquivo" });
+    if (!isValidUUID(id) || !isValidUUID(reportId)) {
+      return res.status(400).json({ error: "IDs inválidos" });
     }
+
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    const [events] = await db.query("SELECT * FROM events WHERE id = ?", [id]);
+    if (events.length === 0) {
+      return res.status(404).json({ error: "Evento não encontrado" });
+    }
+
+    const [reports] = await db.query(
+      "SELECT * FROM event_reports WHERE event_id = ? AND id = ?",
+      [id, reportId]
+    );
+    if (reports.length === 0) {
+      return res.status(404).json({ error: "Relatório não encontrado" });
+    }
+
+    const report = reports[0];
+
+    // Deletar o arquivo do Google Drive
+    if (report.file_link) {
+      await deleteFile(report.file_link);
+    }
+
+    // Deletar o registro do banco de dados
+    await db.query("DELETE FROM event_reports WHERE event_id = ? AND id = ?", [
+      id,
+      reportId,
+    ]);
+
+    res.status(200).json({ message: "Relatório deletado com sucesso" });
+  } catch (error) {
+    console.error(
+      "[DELETE /events/:id/reports/:reportId] Erro ao deletar relatório:",
+      error
+    );
+    res.status(500).json({ error: "Erro ao deletar relatório" });
   }
-);
+});
 
 // Rota para servir arquivos de comprovantes de pagamento
 router.get(
@@ -793,5 +713,62 @@ router.get(
     }
   }
 );
+
+router.get("/files/events/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: `id inválido: ${id}` });
+    }
+
+    if (!["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    // Buscar comprovantes de pagamento dos artistas
+    const [artists] = await db.query(
+      `
+      SELECT user_id as artist_id, payment_proof_link, payment_proof_size, payment_proof_uploaded_at
+      FROM event_artists
+      WHERE event_id = ? AND payment_proof_link IS NOT NULL
+      `,
+      [id]
+    );
+
+    // Buscar relatórios do evento
+    const [reports] = await db.query(
+      `
+      SELECT id as report_id, file_link, file_size, file_uploaded_at, description
+      FROM event_reports
+      WHERE event_id = ?
+      `,
+      [id]
+    );
+
+    const files = {
+      payment_proofs: artists.map((artist) => ({
+        type: "payment_proof",
+        artist_id: artist.artist_id,
+        link: artist.payment_proof_link,
+        size: artist.payment_proof_size,
+        uploaded_at: artist.payment_proof_uploaded_at,
+      })),
+      reports: reports.map((report) => ({
+        type: "report",
+        report_id: report.report_id,
+        link: report.file_link,
+        size: report.file_size,
+        uploaded_at: report.file_uploaded_at,
+        description: report.description,
+      })),
+    };
+
+    res.status(200).json(files);
+  } catch (error) {
+    console.error("[GET /files/events/:id] Erro:", error);
+    res.status(500).json({ error: "Erro ao listar arquivos do evento" });
+  }
+});
 
 module.exports = router;

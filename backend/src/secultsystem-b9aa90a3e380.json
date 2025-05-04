@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "secultsystem",
+  "private_key_id": "b9aa90a3e380c608861123580505242b3187ff68",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDTmeG/PprAa75M\n/mkoVGyCHwQI32ksGaY8/jzoSkdncf1Ba1BuYvPOJpdV0wj/9uuJitSA7nNKTxPP\nUKpEU41F3nML1anUugOmT4cYil25YchjCw49nViKKZJn9L6/iaLwnBVcypmvaEDU\nfUyAWYf2g+iAKXygb8qRQX4jCA+ptvOj6iiJ0R6bslNPOfCBrdAJOfV5nbO+OWsR\n7vlGBTeCqR2QdmLJfQjr5PhFgNsdT5PGp+m9G4YHpK6PoFfxMs0wDOoeBkx0cabC\nfAII3kWPuwzRFd0qM7+/EymGMetJ285Pzhz1CzZlOi/8EtLOXHvqFltcm6pLHRgo\ngwoEpDHrAgMBAAECggEAGMscD2uHeGpnduAMdERIHosBzwRWb2tl9hmYC2PAsBdE\nJGktmHGRvaL58n1yvYMyIACbW6wU6C0R1iXOfYkIsZoaAtX7O0i8ar1AyBhWWQVj\nFG/UMFYCbNXoKLQdsZWv+N9hBWlbzpi5l+xCjXtwGetkz7eMucO/iXuSCwrDww/N\nH9SlwXUrNc7Vn1AepFnOqjvgEvqzJRw32JICsd4H/XfZL1eLaIP2+lzgjgY+ITc8\nn0kW/XTkQ7D+AOvgFbbGmUro+gc8mRVqTHhULGBsIAus3WrTlGLtqyQPqZUwqBtw\nFAQeRKRM7V44+3zulEcZ7JFeRJGdSxSB6CsbXP1KKQKBgQD35hIzFFibEHEdf1eO\nyPoPD4FiwiYhEJkkAPmab3eaofMEnorvyT3+eNy+bFCE1XG8LglS1rTP43mdm5rt\nxLlA5fSfikHhqfqMwVePpRjI/wFcLRwS98aMc1Up04DY+gY/NPazW0b8rXrjttYt\nXplIUsR7hsD6HwFat7OzI4Ts/wKBgQDahCTIWXg5kYVOAqICF+ZLDwoBvGiZpvJK\nLHeDDACqdoC8QooLfEiGjflLHt8N/UcpShXlU0k3iegAQQB7Bd/Z1KEZo7qYUchM\npfFiqgcDACWBzEqRLrWKklO5kUJITxj+tEnI2rkBScLi/+5EYjRo16bbiXK+83lr\nVz1NeZY/FQKBgFfy3RQYLNNewvLXIeY7cVP0iU/TV5m1fM9kNSnQUBuhR0mlQd+O\ngxsMICzC2tI1s7MylgY4vE9hAd2jvhSLDbpzmxUbBQKdvpE/auRAi4mLxxy/uE0W\ncO+VX2qGahkQozS7gqbhRE8S8R1m2ZehDzq0epbkmQRkCaP4tp1ghaFbAoGAQv+N\nP5ifEheaJccM4VNumsjrqoiYEbRsSW3E3vtJIPrgkdhc9xSOMCNLskqu3V0w+mnq\nuLuGkW7JIXrMqOuuLN3S30eiKJ26qjWfAz9akwLyfQ+kNUt7AhfHb/gnuH/4C/A/\nR0Q4wTpadLs/1Nu/cf3c/Sbxdba1HcJL23tSI9kCgYAYFYMUtJzRHdMow6nnwAaS\nhPqgsCjNyO1j8KurEwQGVKMWGudb9KZDToNPO5h3fp0vaTW9Iajd6rxzMb6YgwWa\nDWdOHiS2sFD6HAUUO3vQ5va5pK/4H0dLbnAFgBfqwSnggnLg/qUTrKfpAiIqc65Q\n8dFdHnHgecDm6r4iNhw5GQ==\n-----END PRIVATE KEY-----\n",
+  "client_email": "secult-drive-service@secultsystem.iam.gserviceaccount.com",
+  "client_id": "104774925366341680985",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/secult-drive-service%40secultsystem.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

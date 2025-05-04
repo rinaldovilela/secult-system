@@ -10,6 +10,7 @@ const eventRoutes = require("./routes/eventRoutes");
 const artistRoutes = require("./routes/artistRoutes");
 const searchRoutes = require("./routes/searchRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const fileRoutes = require("./routes/fileRoutes");
 const db = require("./config/db");
 
 const app = express();
@@ -47,6 +48,7 @@ app.use("/api/events", eventRoutes);
 app.use("/api/artists", artistRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/files", fileRoutes);
 
 // Middleware para tratar erros 404
 app.use((req, res, next) => {
