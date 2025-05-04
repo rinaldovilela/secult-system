@@ -1,4 +1,3 @@
-// /lib/SocketContext.tsx
 "use client";
 
 import {
@@ -9,12 +8,11 @@ import {
   ReactNode,
 } from "react";
 import { io, Socket } from "socket.io-client";
-import { useAuth } from "@/lib/useAuth";
-import { getToken } from "@/lib/auth";
+import { useAuth } from "@/lib/AuthContext"; // Updated to use AuthContext
 
 interface Notification {
-  id: string; // Changed from number to string for UUID
-  user_id: string; // Changed from number to string for UUID
+  id: string;
+  user_id: string;
   type: string;
   message: string;
   is_read: boolean;
@@ -26,31 +24,28 @@ interface SocketContextType {
   notifications: Notification[];
   unreadCount: number;
   addNotification: (notification: Notification) => void;
-  markNotificationAsRead: (notificationId: string) => void; // Changed from number to string
+  markNotificationAsRead: (notificationId: string) => void;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
 
 export const SocketProvider = ({ children }: { children: ReactNode }) => {
-  const { user } = useAuth();
+  const { user, token } = useAuth(); // Now gets token from AuthContext
   const [socket, setSocket] = useState<Socket | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
-  // Definir a variável global para a URL da API usando variável de ambiente
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-  // Inicializar WebSocket
   useEffect(() => {
-    if (!user) return;
-
-    const token = getToken();
-    if (!token) {
-      console.error("[SocketContext] Token não encontrado para WebSocket");
+    if (!user || !token) {
+      if (socket) {
+        socket.disconnect();
+        setSocket(null);
+      }
       return;
     }
 
-    // Usar BASE_URL para a conexão WebSocket
     const newSocket = io(BASE_URL, {
       auth: { token },
       reconnection: true,
@@ -91,23 +86,13 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
       newSocket.off("connect_error");
       newSocket.disconnect();
     };
-  }, [user, BASE_URL]); // Added BASE_URL to dependencies
+  }, [user, token, BASE_URL]);
 
-  // Carregar notificações iniciais do backend
   useEffect(() => {
     if (!user || !socket) return;
 
     const fetchNotifications = async () => {
       try {
-        const token = getToken();
-        if (!token) {
-          console.error(
-            "[SocketContext] Token não encontrado para buscar notificações"
-          );
-          return;
-        }
-
-        // Usar BASE_URL para a requisição fetch
         const response = await fetch(`${BASE_URL}/api/notifications`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -129,7 +114,7 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
     };
 
     fetchNotifications();
-  }, [user, socket, BASE_URL]); // Added BASE_URL to dependencies
+  }, [user, socket, token, BASE_URL]);
 
   const addNotification = (notification: Notification) => {
     setNotifications((prev) => [notification, ...prev]);

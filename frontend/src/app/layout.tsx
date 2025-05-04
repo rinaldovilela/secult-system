@@ -1,10 +1,10 @@
-// app/layout.tsx
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import Header from "@/components/layout/Header";
 import { SocketProvider } from "@/lib/SocketContext";
 import { Providers } from "./providers";
+import { AuthProvider } from "@/lib/AuthContext";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -26,13 +26,15 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className="h-full" suppressHydrationWarning>
       <body className={`${inter.className} h-full bg-background flex flex-col`}>
-        <Providers>
-          <SocketProvider>
-            <Header />
-            <main className="flex-1">{children}</main>
-            <Toaster position="top-right" />
-          </SocketProvider>
-        </Providers>
+        <AuthProvider>
+          <Providers>
+            <SocketProvider>
+              <Header />
+              <main className="flex-1">{children}</main>
+              <Toaster position="top-right" />
+            </SocketProvider>
+          </Providers>
+        </AuthProvider>
       </body>
     </html>
   );
