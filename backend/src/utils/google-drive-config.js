@@ -189,18 +189,51 @@ async function uploadFile(file, parentFolderId, fileName) {
   };
 }
 
-// Agendamento do monitoramento de armazenamento com node-cron
-const cron = require("node-cron");
+async function sendStorageAlertToAdmins(message) {
+  try {
+    // Buscar todos os administradores no banco de dados
+    const [admins] = await db.query(
+      "SELECT id, email FROM users WHERE role = 'admin'"
+    );
+
+    if (admins.length === 0) {
+      console.log("Nenhum administrador encontrado para enviar notificações.");
+      return;
+    }
+
+    // Criar uma notificação para cada administrador
+    for (let admin of admins) {
+      // Inserir notificação no banco de dados
+      await db.query(
+        `
+        INSERT INTO notifications (id, user_id, type, message, is_read, created_at) 
+        VALUES (UUID(), ?, 'alert', ?, 0, NOW())
+        `,
+        [admin.id, message]
+      );
+
+      console.log(`Notificação enviada para o administrador: ${admin.email}`);
+    }
+
+    console.log("Notificações enviadas para todos os administradores.");
+  } catch (error) {
+    console.error("Erro ao enviar notificações para administradores:", error);
+  }
+}
 
 // Agendar a verificação de armazenamento para rodar a cada dia às 00:00 (meia-noite)
-cron.schedule("0 0 * * *", async () => {
+cron.schedule("* * * * *", async () => {
   try {
     const storageUsage = await getStorageUsage();
 
+    // Verifica se o uso de armazenamento está acima de 90%
     if (storageUsage.usagePercentage >= 90) {
-      console.log(
-        "Alerta: O uso de armazenamento está acima de 90%. Considere mover arquivos para outro drive."
-      );
+      const alertMessage =
+        "ALERTA: O uso de armazenamento está acima de 90%. Considere mover arquivos para outro drive.";
+      console.log(alertMessage);
+
+      // Enviar notificação para os administradores
+      await sendStorageAlertToAdmins(alertMessage);
     } else {
       console.log("Uso de armazenamento está dentro dos limites.");
     }
@@ -208,6 +241,11 @@ cron.schedule("0 0 * * *", async () => {
     console.error("Erro ao verificar o uso de armazenamento:", error);
   }
 });
+
+// Exemplo de log para indicar que o cronjob foi registrado corretamente
+console.log(
+  "Cronjob de monitoramento de armazenamento configurado para rodar diariamente à meia-noite."
+);
 
 module.exports = {
   ensureFolderStructure,

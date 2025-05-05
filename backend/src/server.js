@@ -12,6 +12,7 @@ const searchRoutes = require("./routes/searchRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const fileRoutes = require("./routes/fileRoutes");
 const db = require("./config/db");
+const { getStorageUsage } = require("./utils/google-drive-config");
 
 const app = express();
 const server = http.createServer(app);
@@ -94,8 +95,19 @@ io.on("connection", (socket) => {
 app.set("io", io);
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
+
+server.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
+  try {
+    const storageUsage = await getStorageUsage();
+    console.log(`Espaço de armazenamento usado: ${storageUsage.used} bytes`);
+    console.log(`Espaço total disponível: ${storageUsage.total} bytes`);
+    console.log(
+      `Porcentagem de uso: ${storageUsage.usagePercentage.toFixed(2)}%`
+    );
+  } catch (error) {
+    console.error("Erro ao verificar o uso de armazenamento:", error);
+  }
 });
 
 app.get("/", (req, res) => {
