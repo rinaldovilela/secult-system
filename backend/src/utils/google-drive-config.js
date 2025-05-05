@@ -1,5 +1,6 @@
 const { google } = require("googleapis");
 const path = require("path");
+const cron = require("node-cron");
 
 const credentials = require("../secultsystem-b9aa90a3e380.json");
 const scopes = ["https://www.googleapis.com/auth/drive"];
@@ -17,6 +18,7 @@ function extractFileId(fileLink) {
   return match ? match[1] : null;
 }
 
+// Função para deletar um arquivo do Google Drive
 async function deleteFile(fileLink) {
   try {
     const fileId = extractFileId(fileLink);
@@ -37,6 +39,7 @@ async function deleteFile(fileLink) {
   }
 }
 
+// Função para garantir a estrutura de pastas no Google Drive
 async function ensureFolderStructure(userId, eventId) {
   const rootFolderName = "SecultSystem";
   const userFolderName = `usuario_${userId}`;
@@ -104,7 +107,49 @@ async function ensureFolderStructure(userId, eventId) {
   return eventFolderId;
 }
 
+// Função para obter o uso de armazenamento do Google Drive
+async function getStorageUsage() {
+  try {
+    const response = await drive.about.get({
+      fields: "storageQuota",
+    });
+
+    const storageQuota = response.data.storageQuota;
+    const used = parseInt(storageQuota.usage) || 0; // Em bytes
+    const total = parseInt(storageQuota.limit) || 0; // Em bytes
+
+    // Calcular a porcentagem de uso
+    const usagePercentage = (used / total) * 100;
+
+    console.log(`Espaço usado: ${used} bytes`);
+    console.log(`Espaço total: ${total} bytes`);
+    console.log(`Porcentagem de uso: ${usagePercentage.toFixed(2)}%`);
+
+    return {
+      used,
+      total,
+      usagePercentage,
+    };
+  } catch (error) {
+    console.error(
+      "[getStorageUsage] Erro ao obter o uso de armazenamento:",
+      error
+    );
+    throw error;
+  }
+}
+
+// Função para realizar o upload de arquivos no Google Drive
 async function uploadFile(file, parentFolderId, fileName) {
+  const storageUsage = await getStorageUsage();
+
+  // Verificar se o uso de armazenamento está acima de 90%
+  if (storageUsage.usagePercentage >= 90) {
+    throw new Error(
+      "Espaço de armazenamento no Google Drive está quase cheio."
+    );
+  }
+
   const bufferStream = require("stream").Readable.from(file.buffer);
   const response = await drive.files.create({
     requestBody: {
@@ -144,4 +189,29 @@ async function uploadFile(file, parentFolderId, fileName) {
   };
 }
 
-module.exports = { ensureFolderStructure, uploadFile, deleteFile };
+// Agendamento do monitoramento de armazenamento com node-cron
+const cron = require("node-cron");
+
+// Agendar a verificação de armazenamento para rodar a cada dia às 00:00 (meia-noite)
+cron.schedule("0 0 * * *", async () => {
+  try {
+    const storageUsage = await getStorageUsage();
+
+    if (storageUsage.usagePercentage >= 90) {
+      console.log(
+        "Alerta: O uso de armazenamento está acima de 90%. Considere mover arquivos para outro drive."
+      );
+    } else {
+      console.log("Uso de armazenamento está dentro dos limites.");
+    }
+  } catch (error) {
+    console.error("Erro ao verificar o uso de armazenamento:", error);
+  }
+});
+
+module.exports = {
+  ensureFolderStructure,
+  uploadFile,
+  deleteFile,
+  getStorageUsage,
+};
