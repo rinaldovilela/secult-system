@@ -26,9 +26,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
-  TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  TooltipContent,
 } from "@/components/ui/tooltip";
 import toast from "react-hot-toast";
 import {
@@ -64,6 +64,9 @@ export default function Header() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [isProfilePictureValid, setIsProfilePictureValid] = useState<
+    boolean | null
+  >(null);
 
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -78,6 +81,33 @@ export default function Header() {
       });
       const fetchedUser = response.data;
       setUser(fetchedUser);
+
+      // Verificar a validade do profile_picture
+      const profilePictureUrl = fetchedUser?.files?.find(
+        (f: { entity_type: string }) => f.entity_type === "user"
+      )?.file_link;
+      if (profilePictureUrl) {
+        try {
+          const response = await fetch(profilePictureUrl, { method: "HEAD" });
+          if (response.ok) {
+            setIsProfilePictureValid(true);
+          } else {
+            setIsProfilePictureValid(false);
+            toast.error(
+              "A foto de perfil não está mais disponível. Por favor, atualize sua foto no perfil.",
+              { duration: 5000 }
+            );
+          }
+        } catch {
+          setIsProfilePictureValid(false);
+          toast.error(
+            "A foto de perfil não está mais disponível. Por favor, atualize sua foto no perfil.",
+            { duration: 5000 }
+          );
+        }
+      } else {
+        setIsProfilePictureValid(false);
+      }
     } catch (error) {
       const errorMessage = axios.isAxiosError(error)
         ? `Erro ao buscar perfil: ${
@@ -101,6 +131,17 @@ export default function Header() {
     if (isAuthLoading || !authUser) return;
     fetchUserProfile();
   }, [isAuthLoading, authUser, fetchUserProfile]);
+
+  // Listener para atualizar o perfil após edição
+  useEffect(() => {
+    const handleProfileUpdate = () => {
+      fetchUserProfile();
+    };
+    window.addEventListener("profileUpdated", handleProfileUpdate);
+    return () => {
+      window.removeEventListener("profileUpdated", handleProfileUpdate);
+    };
+  }, [fetchUserProfile]);
 
   // Atalho de teclado para abrir o menu mobile
   useEffect(() => {
@@ -216,8 +257,10 @@ export default function Header() {
   const isArtistOrGroup = user && ["artist", "group"].includes(user.role);
 
   const profilePictureUrl =
-    user?.files?.find((f) => f.entity_type === "user")?.file_link ||
-    "/default-avatar.png";
+    isProfilePictureValid === false
+      ? "/default-avatar.png"
+      : user?.files?.find((f) => f.entity_type === "user")?.file_link ||
+        "/default-avatar.png";
 
   return (
     <header className="bg-gradient-to-r from-primary to-primary/90 text-primary-foreground shadow-sm rounded-b-lg animate-in slide-in-from-top duration-300">

@@ -222,6 +222,45 @@ cron.schedule("0 0 * * 0", async () => {
   }
 });
 
+// Cronjob de validação de integridade dos arquivos
+cron.schedule("0 1 * * *", async () => {
+  try {
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    const [files] = await connection.query(
+      "SELECT id, file_id, drive_account FROM files WHERE deleted_at IS NULL LIMIT 100"
+    );
+
+    for (const file of files) {
+      const driveClient = DriveManager.getDriveClient(file.drive_account);
+      try {
+        await driveClient.files.get({ fileId: file.file_id, fields: "id" });
+      } catch (error) {
+        if (error.code === 404) {
+          console.log(
+            `Arquivo ${file.id} não encontrado no Google Drive. Marcando como deletado.`
+          );
+          await connection.query(
+            "UPDATE files SET deleted_at = NOW() WHERE id = ?",
+            [file.id]
+          );
+        } else {
+          console.error(`Erro ao verificar arquivo ${file.id}:`, error);
+        }
+      }
+    }
+
+    await connection.commit();
+    console.log("Validação de integridade de arquivos concluída com sucesso.");
+  } catch (error) {
+    await connection.rollback();
+    console.error("Erro na validação de integridade de arquivos:", error);
+  } finally {
+    connection.release();
+  }
+});
+
 // Cronjob existente para monitoramento de armazenamento
 cron.schedule("0 0 * * *", async () => {
   try {
@@ -244,6 +283,9 @@ cron.schedule("0 0 * * *", async () => {
 
 console.log(
   "Cronjob de monitoramento de armazenamento configurado para rodar diariamente à meia-noite."
+);
+console.log(
+  "Cronjob de validação de integridade configurado para rodar diariamente à 1h."
 );
 
 module.exports = DriveService;

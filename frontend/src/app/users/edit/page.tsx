@@ -42,7 +42,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Skeleton } from "@/components/ui/skeleton";
 import { getToken } from "@/lib/auth";
 import { z } from "zod";
 
@@ -136,7 +135,7 @@ const BRAZILIAN_STATES = [
   "TO",
 ];
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const CACHE_KEY = "userDetailsCache";
 
@@ -145,8 +144,10 @@ export default function EditUser() {
   const { user, isAuthLoading } = useAuth();
   const searchParams = useSearchParams();
   const id = searchParams.get("id") || undefined;
-  const [formData, setFormData] = useState<EditUserFormData | null>(null);
   const [profilePreview, setProfilePreview] = useState<string | null>(null);
+  const [isProfilePictureValid, setIsProfilePictureValid] = useState<
+    boolean | null
+  >(null);
   const [isLoadingCep, setIsLoadingCep] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cepStatus, setCepStatus] = useState<
@@ -164,7 +165,7 @@ export default function EditUser() {
       cpf_cnpj: "",
       bio: "",
       area_of_expertise: "",
-      birth_date: "",
+      birth_date: undefined, // Alterado de "" para undefined
       address: {
         cep: "",
         logradouro: "",
@@ -219,8 +220,12 @@ export default function EditUser() {
         bio: userData.bio || "",
         area_of_expertise: userData.area_of_expertise || "",
         birth_date: userData.birth_date
-          ? new Date(userData.birth_date).toLocaleDateString("pt-BR")
-          : "",
+          ? new Date(userData.birth_date).toLocaleDateString("pt-BR", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+            })
+          : undefined, // Alterado para undefined se nulo
         address: {
           cep: userData.address?.cep || "",
           logradouro: userData.address?.logradouro || "",
@@ -249,15 +254,37 @@ export default function EditUser() {
         related_files: undefined,
       };
 
-      const preview =
-        userData.profile_picture && typeof userData.profile_picture === "string"
-          ? userData.profile_picture.startsWith("data:image")
-            ? userData.profile_picture
-            : `data:image/jpeg;base64,${userData.profile_picture}`
-          : null;
+      let preview: string | null = null;
+      const profilePictureUrl = userData.files?.find(
+        (f: { entity_type: string }) => f.entity_type === "user"
+      )?.file_link;
+      if (profilePictureUrl) {
+        try {
+          const response = await fetch(profilePictureUrl, { method: "HEAD" });
+          if (response.ok) {
+            setIsProfilePictureValid(true);
+            preview = profilePictureUrl;
+          } else {
+            setIsProfilePictureValid(false);
+            toast({
+              title: "Foto de perfil não disponível",
+              description: "Por favor, envie uma nova foto de perfil.",
+              variant: "destructive",
+            });
+          }
+        } catch (error) {
+          setIsProfilePictureValid(false);
+          toast({
+            title: "Foto de perfil não disponível",
+            description: "Por favor, envie uma nova foto de perfil.",
+            variant: "destructive",
+          });
+        }
+      } else {
+        setIsProfilePictureValid(false);
+      }
 
       form.reset(mappedData);
-      setFormData(mappedData);
       setProfilePreview(preview);
       setDataFetched(true);
 
@@ -390,7 +417,9 @@ export default function EditUser() {
       if (values.bio) formDataToSend.append("bio", values.bio);
       if (values.area_of_expertise)
         formDataToSend.append("area_of_expertise", values.area_of_expertise);
-      if (values.birth_date) {
+
+      // Tratar birth_date apenas se houver valor e for válido
+      if (values.birth_date && values.birth_date.trim() !== "") {
         const [day, month, year] = values.birth_date.split("/").map(Number);
         if (
           !day ||
@@ -482,10 +511,10 @@ export default function EditUser() {
         withCredentials: false,
       });
 
-      // Invalidar o cache após a atualização
+      window.dispatchEvent(new Event("profileUpdated"));
+
       localStorage.removeItem(`${CACHE_KEY}_${id}`);
 
-      // Recarregar os dados do servidor
       setDataFetched(false);
       await fetchUserData();
 
@@ -493,11 +522,18 @@ export default function EditUser() {
     } catch (error) {
       console.error("Erro ao enviar atualização:", error);
       if (axios.isAxiosError(error)) {
+        const errorMessage =
+          error.response?.status === 413
+            ? "Arquivo muito grande. O limite é 15MB."
+            : error.response?.status === 415
+            ? "Tipo de arquivo não suportado. Verifique os formatos aceitos."
+            : error.response?.status === 429
+            ? "Limite de armazenamento excedido no Google Drive. Contacte o administrador."
+            : error.response?.data?.error ||
+              "Erro ao atualizar usuário. Tente novamente.";
         form.setError("root", {
           type: "manual",
-          message:
-            error.response?.data?.error ||
-            "Erro ao atualizar usuário. Tente novamente.",
+          message: errorMessage,
         });
       } else {
         form.setError("root", {
@@ -566,15 +602,7 @@ export default function EditUser() {
               className="space-y-6"
               aria-label="Formulário de edição de usuário"
             >
-              <FormField
-                control={form.control}
-                name="root"
-                render={() => (
-                  <FormItem>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* Removed invalid FormField with name="root" */}
               <div className="bg-muted/50 p-6 rounded-lg space-y-4 animate-in fade-in duration-500">
                 <h2 className="text-xl font-semibold text-foreground">
                   Dados Pessoais
@@ -1134,7 +1162,7 @@ export default function EditUser() {
                 <FormField
                   control={form.control}
                   name="profile_picture"
-                  render={({ field }) => (
+                  render={({}) => (
                     <FormItem>
                       <FormLabel className="flex items-center gap-2 text-muted-foreground">
                         <ImageIcon className="w-5 h-5 text-primary" />
@@ -1182,7 +1210,7 @@ export default function EditUser() {
                 <FormField
                   control={form.control}
                   name="portfolio"
-                  render={({ field }) => (
+                  render={({}) => (
                     <FormItem>
                       <FormLabel className="flex items-center gap-2 text-muted-foreground">
                         <FileText className="w-5 h-5 text-primary" />
@@ -1191,7 +1219,7 @@ export default function EditUser() {
                       <FormControl>
                         <Input
                           type="file"
-                          accept=".pdf"
+                          accept="application/pdf"
                           onChange={(e) => handleFileChange("portfolio", e)}
                           disabled={isSubmitting}
                           className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"
@@ -1209,7 +1237,7 @@ export default function EditUser() {
                 <FormField
                   control={form.control}
                   name="video"
-                  render={({ field }) => (
+                  render={({}) => (
                     <FormItem>
                       <FormLabel className="flex items-center gap-2 text-muted-foreground">
                         <Video className="w-5 h-5 text-primary" />
@@ -1236,7 +1264,7 @@ export default function EditUser() {
                 <FormField
                   control={form.control}
                   name="related_files"
-                  render={({ field }) => (
+                  render={({}) => (
                     <FormItem>
                       <FormLabel className="flex items-center gap-2 text-muted-foreground">
                         <FileText className="w-5 h-5 text-primary" />
@@ -1245,7 +1273,7 @@ export default function EditUser() {
                       <FormControl>
                         <Input
                           type="file"
-                          accept=".pdf"
+                          accept="application/pdf"
                           onChange={(e) => handleFileChange("related_files", e)}
                           disabled={isSubmitting}
                           className="rounded-md border-muted-foreground/20 bg-background shadow-sm focus:border-primary focus:ring-primary/50 transition-all duration-300"

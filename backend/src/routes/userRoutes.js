@@ -620,8 +620,55 @@ router.put(
         return res.status(400).json({ error: "Campos obrigatórios ausentes" });
       }
 
-      if (!cpf.isValid(cpf_cnpj) && !cnpj.isValid(cpf_cnpj)) {
-        return res.status(400).json({ error: "CPF ou CNPJ inválido" });
+      // Validação manual de CPF ou CNPJ
+      const cleanCpfCnpj = cpf_cnpj.replace(/\D/g, "");
+      const isCpf = cleanCpfCnpj.length === 11;
+      const isCnpj = cleanCpfCnpj.length === 14;
+      if (!isCpf && !isCnpj) {
+        return res.status(400).json({
+          error: "CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos",
+        });
+      }
+      // Validação básica de CPF (algoritmo simplificado)
+      if (isCpf) {
+        let sum = 0;
+        let remainder;
+        for (let i = 0; i < 9; i++)
+          sum += parseInt(cleanCpfCnpj.charAt(i)) * (10 - i);
+        remainder = (sum * 10) % 11;
+        if (remainder === 10 || remainder === 11) remainder = 0;
+        if (remainder !== parseInt(cleanCpfCnpj.charAt(9))) {
+          return res.status(400).json({ error: "CPF inválido" });
+        }
+        sum = 0;
+        for (let i = 0; i < 10; i++)
+          sum += parseInt(cleanCpfCnpj.charAt(i)) * (11 - i);
+        remainder = (sum * 10) % 11;
+        if (remainder === 10 || remainder === 11) remainder = 0;
+        if (remainder !== parseInt(cleanCpfCnpj.charAt(10))) {
+          return res.status(400).json({ error: "CPF inválido" });
+        }
+      }
+      // Validação básica de CNPJ (algoritmo simplificado)
+      if (isCnpj) {
+        const weights1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+        const weights2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+        let sum = 0;
+        for (let i = 0; i < 12; i++)
+          sum += parseInt(cleanCpfCnpj.charAt(i)) * weights1[i];
+        let remainder = sum % 11;
+        remainder = remainder < 2 ? 0 : 11 - remainder;
+        if (remainder !== parseInt(cleanCpfCnpj.charAt(12))) {
+          return res.status(400).json({ error: "CNPJ inválido" });
+        }
+        sum = 0;
+        for (let i = 0; i < 13; i++)
+          sum += parseInt(cleanCpfCnpj.charAt(i)) * weights2[i];
+        remainder = sum % 11;
+        remainder = remainder < 2 ? 0 : 11 - remainder;
+        if (remainder !== parseInt(cleanCpfCnpj.charAt(13))) {
+          return res.status(400).json({ error: "CNPJ inválido" });
+        }
       }
 
       if (!["artist", "group"].includes(role)) {
