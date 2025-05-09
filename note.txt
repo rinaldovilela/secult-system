@@ -58,3 +58,12 @@ ALTER TABLE event_reports
   ADD COLUMN file_link VARCHAR(255) NULL,
   ADD COLUMN file_size BIGINT NULL,
   ADD COLUMN file_uploaded_at DATETIME NULL;
+
+
+
+
+  // //
+
+
+
+  

@@ -4,14 +4,12 @@ const router = express.Router();
 const db = require("../config/db");
 const { authenticateToken } = require("../middleware/auth");
 const bcrypt = require("bcrypt");
-const multer = require("multer");
-const cpfCnpjValidator = require("cpf-cnpj-validator");
-const { cpf, cnpj } = cpfCnpjValidator;
-const compression = require("compression");
 const {
-  ensureFolderStructure,
-  uploadFile,
-} = require("../utils/google-drive-config");
+  fileValidation,
+  checkFileLimit,
+} = require("../middleware/fileValidation");
+const DriveService = require("../utils/google-drive-config");
+const compression = require("compression");
 
 const cache = {};
 const CACHE_DURATION = 300000;
@@ -25,23 +23,6 @@ router.use((req, res, next) => {
   console.log(`Recebida requisição: ${req.method} ${req.originalUrl}`);
   next();
 });
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
-});
-
-const handleMulterError = (err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    if (err.code === "LIMIT_FILE_SIZE") {
-      return res
-        .status(400)
-        .json({ error: "Arquivo muito grande. O limite é 50MB por arquivo." });
-    }
-    return res.status(400).json({ error: err.message });
-  }
-  next(err);
-};
 
 const validateArtistData = async (req, res, next) => {
   if (["artist", "group"].includes(req.body.role)) {
@@ -105,14 +86,9 @@ const validateArtistData = async (req, res, next) => {
 
 router.post(
   "/register",
-  upload.fields([
-    { name: "profile_picture", maxCount: 1 },
-    { name: "portfolio", maxCount: 1 },
-    { name: "video", maxCount: 1 },
-    { name: "related_files", maxCount: 1 },
-  ]),
-  handleMulterError,
   validateArtistData,
+  fileValidation(["profile_picture", "portfolio", "video", "related_files"]),
+  checkFileLimit,
   async (req, res) => {
     const connection = await db.getConnection();
     await connection.beginTransaction();
@@ -131,124 +107,62 @@ router.post(
         bank_details,
       } = req.body;
 
-      const files = req.files;
-      console.log("Arquivos recebidos:", files); // Log para depurar
+      const files = req.files || {};
+      console.log("Arquivos recebidos:", files);
 
       const userId = uuidv4();
-      const timestamp = new Date().toISOString().replace(/[:.-]/g, "");
-
-      let profilePictureLink = null,
-        profilePictureSize = null,
-        profilePictureUploadedAt = null;
-      if (files?.profile_picture?.[0]) {
-        const eventFolderId = await ensureFolderStructure(userId, null);
-        const fileName = `usuario_${userId}_${timestamp}_${files.profile_picture[0].originalname}`;
-        const result = await uploadFile(
-          files.profile_picture[0],
-          eventFolderId,
-          fileName
-        );
-        console.log("Profile Picture Link:", result.link);
-        profilePictureLink = result.link;
-        profilePictureSize = result.size;
-        profilePictureUploadedAt = new Date();
-      } else {
-        console.log("Nenhum profile_picture enviado.");
-      }
 
       const hashedPassword = await bcrypt.hash(password, 10);
       await connection.query(
-        `INSERT INTO users (id, name, email, password, role, cpf_cnpj, profile_picture_link, profile_picture_size, profile_picture_uploaded_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [
-          userId,
-          name,
-          email,
-          hashedPassword,
-          role,
-          cpf_cnpj,
-          profilePictureLink,
-          profilePictureSize,
-          profilePictureUploadedAt,
-        ]
+        `INSERT INTO users (id, name, email, password, role, cpf_cnpj, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        [userId, name, email, hashedPassword, role, cpf_cnpj || null]
       );
 
       if (["artist", "group"].includes(role)) {
-        let portfolioLink = null,
-          portfolioSize = null,
-          portfolioUploadedAt = null;
-        let videoLink = null,
-          videoSize = null,
-          videoUploadedAt = null;
-        let relatedFilesLink = null,
-          relatedFilesSize = null,
-          relatedFilesUploadedAt = null;
-
-        if (files?.portfolio?.[0]) {
-          const eventFolderId = await ensureFolderStructure(userId, null);
-          const fileName = `usuario_${userId}_${timestamp}_${files.portfolio[0].originalname}`;
-          const result = await uploadFile(
-            files.portfolio[0],
-            eventFolderId,
-            fileName
-          );
-          console.log("Portfolio Link:", result.link);
-          portfolioLink = result.link;
-          portfolioSize = result.size;
-          portfolioUploadedAt = new Date();
-        } else {
-          console.log("Nenhum portfolio enviado.");
-        }
-        if (files?.video?.[0]) {
-          const eventFolderId = await ensureFolderStructure(userId, null);
-          const fileName = `usuario_${userId}_${timestamp}_${files.video[0].originalname}`;
-          const result = await uploadFile(
-            files.video[0],
-            eventFolderId,
-            fileName
-          );
-          console.log("Video Link:", result.link);
-          videoLink = result.link;
-          videoSize = result.size;
-          videoUploadedAt = new Date();
-        } else {
-          console.log("Nenhum video enviado.");
-        }
-        if (files?.related_files?.[0]) {
-          const eventFolderId = await ensureFolderStructure(userId, null);
-          const fileName = `usuario_${userId}_${timestamp}_${files.related_files[0].originalname}`;
-          const result = await uploadFile(
-            files.related_files[0],
-            eventFolderId,
-            fileName
-          );
-          console.log("Related Files Link:", result.link);
-          relatedFilesLink = result.link;
-          relatedFilesSize = result.size;
-          relatedFilesUploadedAt = new Date();
-        } else {
-          console.log("Nenhum related_files enviado.");
-        }
-
         await connection.query(
-          `INSERT INTO artist_group_details (user_id, bio, area_of_expertise, portfolio_link, portfolio_size, portfolio_uploaded_at, video_link, video_size, video_uploaded_at, related_files_link, related_files_size, related_files_uploaded_at, birth_date, address, bank_details) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO artist_group_details (user_id, bio, area_of_expertise, birth_date, address, bank_details) VALUES (?, ?, ?, ?, ?, ?)`,
           [
             userId,
             bio,
             area_of_expertise,
-            portfolioLink,
-            portfolioSize,
-            portfolioUploadedAt,
-            videoLink,
-            videoSize,
-            videoUploadedAt,
-            relatedFilesLink,
-            relatedFilesSize,
-            relatedFilesUploadedAt,
             birth_date || null,
             JSON.stringify(address || {}),
             JSON.stringify(bank_details || {}),
           ]
         );
+
+        if (files.profile_picture) {
+          await DriveService.uploadFile(
+            files.profile_picture[0],
+            "user",
+            userId,
+            "profile_picture"
+          );
+        }
+        if (files.portfolio) {
+          await DriveService.uploadFile(
+            files.portfolio[0],
+            "user",
+            userId,
+            "portfolio"
+          );
+        }
+        if (files.video) {
+          await DriveService.uploadFile(
+            files.video[0],
+            "user",
+            userId,
+            "video"
+          );
+        }
+        if (files.related_files) {
+          await DriveService.uploadFile(
+            files.related_files[0],
+            "user",
+            userId,
+            "related_files"
+          );
+        }
       }
 
       await connection.commit();
@@ -269,5 +183,41 @@ router.post(
     }
   }
 );
+
+// GET /api/users/:id - Listar arquivos de um usuário
+router.get("/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!isValidUUID(id)) return res.status(400).json({ error: "ID inválido" });
+
+    const [users] = await db.query("SELECT * FROM users WHERE id = ?", [id]);
+    if (users.length === 0)
+      return res.status(404).json({ error: "Usuário não encontrado" });
+
+    if (req.user.id !== id && !["admin", "secretary"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+
+    const [files] = await db.query(
+      `SELECT file_type, file_link, file_size, uploaded_at
+      FROM files
+      WHERE entity_type = 'user' AND entity_id = ? AND deleted_at IS NULL`,
+      [id]
+    );
+
+    const mappedFiles = files.map((file) => ({
+      type: file.file_type,
+      link: file.file_link,
+      size: file.file_size,
+      uploaded_at: file.uploaded_at,
+    }));
+
+    res.status(200).json({ files: mappedFiles });
+  } catch (error) {
+    console.error("[GET /users/:id] Erro:", error);
+    res.status(500).json({ error: "Erro ao listar arquivos" });
+  }
+});
 
 module.exports = router;

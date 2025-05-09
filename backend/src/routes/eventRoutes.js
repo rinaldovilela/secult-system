@@ -2,46 +2,13 @@ const express = require("express");
 const { v4: uuidv4 } = require("uuid");
 const db = require("../config/db");
 const { authenticateToken, authorizeRole } = require("../middleware/auth");
-const multer = require("multer");
 const {
-  ensureFolderStructure,
-  uploadFile,
-  deleteFile, // Nova função adicionada
-} = require("../utils/google-drive-config");
+  fileValidation,
+  checkFileLimit,
+} = require("../middleware/fileValidation");
+const DriveService = require("../utils/google-drive-config");
 
 const router = express.Router();
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = [
-      "image/jpeg",
-      "image/png",
-      "application/pdf",
-      "video/mp4",
-    ];
-    if (allowedTypes.includes(file.mimetype)) cb(null, true);
-    else cb(new Error("Tipo de arquivo não permitido"), false);
-  },
-});
-
-const handleMulterError = (err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    if (err.code === "LIMIT_FILE_SIZE") {
-      return res
-        .status(400)
-        .json({ error: "Arquivo muito grande. O limite é 10MB." });
-    }
-    if (err.code === "LIMIT_UNEXPECTED_FILE") {
-      return res.status(400).json({
-        error: `Campo inesperado: ${err.field}. Esperado: payment_proof.`,
-      });
-    }
-    return res.status(400).json({ error: err.message });
-  }
-  next(err);
-};
 
 const isValidUUID = (uuid) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
@@ -187,28 +154,22 @@ router.post("/:id/artists", authenticateToken, async (req, res) => {
 // GET /api/events - Listar todos os eventos (qualquer usuário autenticado pode ver)
 router.get("/", authenticateToken, async (req, res) => {
   try {
-    const [events] = await db.query(`
-      SELECT * FROM events
-    `);
+    const [events] = await db.query(`SELECT * FROM events`);
 
     const eventsWithArtists = await Promise.all(
       events.map(async (event) => {
         const [artists] = await db.query(
-          `
-          SELECT ea.user_id as artist_id, u.name as artist_name, ea.amount, ea.is_paid, ea.payment_proof_mime_type
+          `SELECT ea.user_id as artist_id, u.name as artist_name, ea.amount, ea.is_paid
           FROM event_artists ea
           LEFT JOIN users u ON ea.user_id = u.id
-          WHERE ea.event_id = ?
-        `,
+          WHERE ea.event_id = ?`,
           [event.id]
         );
 
         const parsedArtists = artists.map((artist) => ({
           ...artist,
           amount: Number(artist.amount),
-          payment_proof_url: artist.payment_proof_mime_type
-            ? `/api/files/event_artists/${event.id}/${artist.artist_id}/payment_proof`
-            : null,
+          payment_proof_url: null, // Removido, será gerado dinamicamente em outra rota
         }));
 
         return { ...event, artists: parsedArtists };
@@ -235,8 +196,7 @@ router.get("/:id", authenticateToken, async (req, res) => {
       `
       SELECT e.*
       FROM events e
-      WHERE e.id = ?
-    `,
+      WHERE e.id = ?`,
       [id]
     );
 
@@ -248,20 +208,17 @@ router.get("/:id", authenticateToken, async (req, res) => {
 
     const [artists] = await db.query(
       `
-      SELECT ea.user_id as artist_id, u.name as artist_name, ea.amount, ea.is_paid, ea.payment_proof_mime_type
+      SELECT ea.user_id as artist_id, u.name as artist_name, ea.amount, ea.is_paid
       FROM event_artists ea
       LEFT JOIN users u ON ea.user_id = u.id
-      WHERE ea.event_id = ?
-    `,
+      WHERE ea.event_id = ?`,
       [id]
     );
 
     const parsedArtists = artists.map((artist) => ({
       ...artist,
       amount: Number(artist.amount),
-      payment_proof_url: artist.payment_proof_mime_type
-        ? `/api/files/event_artists/${id}/${artist.artist_id}/payment_proof`
-        : null,
+      payment_proof_url: null, // Removido, será gerado dinamicamente em outra rota
     }));
 
     res.status(200).json({ ...event, artists: parsedArtists });
@@ -303,8 +260,7 @@ router.put("/:id", authenticateToken, async (req, res) => {
       `
       UPDATE events
       SET title = ?, description = ?, date = ?, location = ?, target_audience = ?
-      WHERE id = ?
-    `,
+      WHERE id = ?`,
       [title, description || null, formattedDate, location, target_audience, id]
     );
 
@@ -324,13 +280,9 @@ router.delete("/:id/artists/:artistId", authenticateToken, async (req, res) => {
   try {
     const { id, artistId } = req.params;
 
-    if (!isValidUUID(id)) {
-      return res.status(400).json({ error: `id inválido: ${id}` });
+    if (!isValidUUID(id) || !isValidUUID(artistId)) {
+      return res.status(400).json({ error: "IDs inválidos" });
     }
-    if (!isValidUUID(artistId)) {
-      return res.status(400).json({ error: `artistId inválido: ${artistId}` });
-    }
-
     if (!["admin", "secretary"].includes(req.user.role)) {
       return res.status(403).json({ error: "Acesso negado" });
     }
@@ -339,8 +291,6 @@ router.delete("/:id/artists/:artistId", authenticateToken, async (req, res) => {
     if (events.length === 0) {
       return res.status(404).json({ error: "Evento não encontrado" });
     }
-
-    const event = events[0];
 
     const [existing] = await db.query(
       "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
@@ -352,25 +302,23 @@ router.delete("/:id/artists/:artistId", authenticateToken, async (req, res) => {
         .json({ error: "Artista ou grupo não encontrado no evento" });
     }
 
-    // Deletar o comprovante de pagamento do Google Drive, se existir
-    if (existing[0].payment_proof_link) {
-      await deleteFile(existing[0].payment_proof_link);
-    }
+    // Deletar arquivos associados na tabela files
+    await db.query(
+      "UPDATE files SET deleted_at = NOW() WHERE entity_type = 'event_artist' AND entity_id = ? AND file_type = 'payment_proof'",
+      [artistId]
+    );
 
     await db.query(
       "DELETE FROM event_artists WHERE event_id = ? AND user_id = ?",
       [id, artistId]
     );
 
-    console.log(
-      `[DELETE /events/:id/artists/:artistId] Gerando notificação para artistId: ${artistId}`
-    );
     await createNotification(
       req,
       artistId,
       "artist_removed",
-      `Você foi removido do evento '${event.title}' agendado para ${new Date(
-        event.date
+      `Você foi removido do evento '${events[0].title}' agendado para ${new Date(
+        events[0].date
       ).toLocaleDateString("pt-BR")}.`
     );
 
@@ -390,8 +338,8 @@ router.delete("/:id/artists/:artistId", authenticateToken, async (req, res) => {
 router.patch(
   "/:id/artists/:artistId",
   authenticateToken,
-  upload.single("payment_proof"),
-  handleMulterError,
+  fileValidation("payment_proof"),
+  checkFileLimit,
   async (req, res) => {
     try {
       const { id, artistId } = req.params;
@@ -427,39 +375,34 @@ router.patch(
       if (amount !== undefined) updates.amount = amount;
 
       if (paymentProof) {
-        // Deletar o arquivo antigo do Google Drive, se existir
-        if (existing[0].payment_proof_link) {
-          await deleteFile(existing[0].payment_proof_link);
-        }
+        // Deletar arquivo antigo, se existir
+        await db.query(
+          "UPDATE files SET deleted_at = NOW() WHERE entity_type = 'event_artist' AND entity_id = ? AND file_type = 'payment_proof' AND deleted_at IS NULL",
+          [artistId]
+        );
 
-        const eventFolderId = await ensureFolderStructure(null, id); // Pasta do evento
-        const timestamp = new Date().toISOString().replace(/[:.-]/g, "");
-        const fileName = `usuario_${artistId}_evento_${id}_${timestamp}_${paymentProof.originalname}`;
-        const result = await uploadFile(paymentProof, eventFolderId, fileName);
-        updates.payment_proof_link = result.link;
-        updates.payment_proof_size = result.size;
-        updates.payment_proof_uploaded_at = new Date();
+        await DriveService.uploadFile(
+          paymentProof,
+          "event_artist",
+          artistId,
+          "payment_proof"
+        );
       } else if (parsedIsPaid === false) {
-        // Deletar o arquivo do Google Drive ao remover o comprovante
-        if (existing[0].payment_proof_link) {
-          await deleteFile(existing[0].payment_proof_link);
-        }
-        updates.payment_proof_link = null;
-        updates.payment_proof_size = null;
-        updates.payment_proof_uploaded_at = null;
+        await db.query(
+          "UPDATE files SET deleted_at = NOW() WHERE entity_type = 'event_artist' AND entity_id = ? AND file_type = 'payment_proof' AND deleted_at IS NULL",
+          [artistId]
+        );
       }
 
       const fields = Object.keys(updates);
-      if (fields.length === 0)
-        return res.status(400).json({ error: "Nenhum campo para atualizar" });
-
-      const setClause = fields.map((field) => `${field} = ?`).join(", ");
-      const values = fields.map((field) => updates[field]);
-
-      await db.query(
-        `UPDATE event_artists SET ${setClause} WHERE event_id = ? AND user_id = ?`,
-        [...values, id, artistId]
-      );
+      if (fields.length > 0) {
+        const setClause = fields.map((field) => `${field} = ?`).join(", ");
+        const values = fields.map((field) => updates[field]);
+        await db.query(
+          `UPDATE event_artists SET ${setClause} WHERE event_id = ? AND user_id = ?`,
+          [...values, id, artistId]
+        );
+      }
 
       if (parsedIsPaid !== undefined) {
         await createNotification(
@@ -497,8 +440,7 @@ router.get("/details/:id", authenticateToken, async (req, res) => {
       `
       SELECT id, title, date, description, location, created_at
       FROM events
-      WHERE id = ?
-    `,
+      WHERE id = ?`,
       [id]
     );
 
@@ -511,11 +453,10 @@ router.get("/details/:id", authenticateToken, async (req, res) => {
     // Buscar os artistas associados ao evento
     const [artists] = await db.query(
       `
-      SELECT ea.user_id as artist_id, u.name as artist_name, ea.amount, ea.is_paid, ea.payment_proof_mime_type
+      SELECT ea.user_id as artist_id, u.name as artist_name, ea.amount, ea.is_paid
       FROM event_artists ea
       LEFT JOIN users u ON ea.user_id = u.id
-      WHERE ea.event_id = ?
-    `,
+      WHERE ea.event_id = ?`,
       [id]
     );
 
@@ -524,9 +465,7 @@ router.get("/details/:id", authenticateToken, async (req, res) => {
       artist_name: artist.artist_name,
       amount: Number(artist.amount),
       is_paid: Boolean(artist.is_paid),
-      payment_proof_url: artist.payment_proof_mime_type
-        ? `/api/files/event_artists/${id}/${artist.artist_id}/payment_proof`
-        : null,
+      payment_proof_url: null, // Removido, será gerado dinamicamente em outra rota
     }));
 
     res.status(200).json({ ...event, artists: parsedArtists });
@@ -536,11 +475,12 @@ router.get("/details/:id", authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/events/:id/reports
 router.post(
   "/:id/reports",
   authenticateToken,
-  upload.single("file"),
-  handleMulterError,
+  fileValidation("report", "report"),
+  checkFileLimit,
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -560,22 +500,18 @@ router.post(
       if (events.length === 0)
         return res.status(404).json({ error: "Evento não encontrado" });
 
-      const eventFolderId = await ensureFolderStructure(null, id);
-      const timestamp = new Date().toISOString().replace(/[:.-]/g, "");
-      const fileName = `evento_${id}_${timestamp}_${file.originalname}`;
-      const result = await uploadFile(file, eventFolderId, fileName);
+      await DriveService.uploadFile(
+        file,
+        "event_report",
+        id,
+        "report",
+        "report"
+      );
       const reportId = uuidv4();
 
       await db.query(
-        `INSERT INTO event_reports (id, event_id, file_link, file_size, file_uploaded_at, description, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-        [
-          reportId,
-          id,
-          result.link,
-          result.size,
-          new Date(),
-          description || null,
-        ]
+        `INSERT INTO event_reports (id, event_id, description, created_at) VALUES (?, ?, ?, NOW())`,
+        [reportId, id, description || null]
       );
 
       res.status(201).json({ message: "Relatório adicionado com sucesso" });
@@ -600,17 +536,16 @@ router.get("/:id/reports", authenticateToken, async (req, res) => {
     }
 
     const [reports] = await db.query(
-      `
-      SELECT id, file_type, description, created_at
-      FROM event_reports
-      WHERE event_id = ?
-    `,
+      `SELECT er.id, er.description, er.created_at, f.file_link
+      FROM event_reports er
+      LEFT JOIN files f ON f.entity_type = 'event_report' AND f.entity_id = er.id AND f.file_type = 'report' AND f.deleted_at IS NULL
+      WHERE er.event_id = ?`,
       [id]
     );
 
     const reportsWithUrls = reports.map((report) => ({
       ...report,
-      file_url: `/api/files/event_reports/${id}/${report.id}`,
+      file_url: report.file_link || null,
     }));
 
     res.status(200).json(reportsWithUrls);
@@ -649,14 +584,11 @@ router.delete("/:id/reports/:reportId", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "Relatório não encontrado" });
     }
 
-    const report = reports[0];
+    await db.query(
+      "UPDATE files SET deleted_at = NOW() WHERE entity_type = 'event_report' AND entity_id = ? AND file_type = 'report' AND deleted_at IS NULL",
+      [reportId]
+    );
 
-    // Deletar o arquivo do Google Drive
-    if (report.file_link) {
-      await deleteFile(report.file_link);
-    }
-
-    // Deletar o registro do banco de dados
     await db.query("DELETE FROM event_reports WHERE event_id = ? AND id = ?", [
       id,
       reportId,
@@ -672,48 +604,7 @@ router.delete("/:id/reports/:reportId", authenticateToken, async (req, res) => {
   }
 });
 
-// Rota para servir arquivos de comprovantes de pagamento
-router.get(
-  "/files/event_artists/:eventId/:artistId/payment_proof",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { eventId, artistId } = req.params;
-
-      if (!isValidUUID(eventId) || !isValidUUID(artistId)) {
-        return res.status(400).json({ error: "IDs inválidos" });
-      }
-
-      if (!["admin", "secretary"].includes(req.user.role)) {
-        return res.status(403).json({ error: "Acesso negado" });
-      }
-
-      const [records] = await db.query(
-        `
-        SELECT ea.payment_proof, ea.payment_proof_mime_type
-        FROM event_artists ea
-        WHERE ea.event_id = ? AND ea.user_id = ?
-      `,
-        [eventId, artistId]
-      );
-
-      if (records.length === 0 || !records[0].payment_proof) {
-        return res.status(404).json({ error: "Comprovante não encontrado" });
-      }
-
-      const record = records[0];
-      res.setHeader("Content-Type", record.payment_proof_mime_type);
-      res.send(record.payment_proof);
-    } catch (error) {
-      console.error(
-        "[GET /files/event_artists/:eventId/:artistId/payment_proof] Erro ao buscar arquivo:",
-        error
-      );
-      res.status(500).json({ error: "Erro ao buscar arquivo" });
-    }
-  }
-);
-
+// GET /api/events/files/events/:id
 router.get("/files/events/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -723,26 +614,27 @@ router.get("/files/events/:id", authenticateToken, async (req, res) => {
     }
 
     if (!["admin", "secretary"].includes(req.user.role)) {
-      return res.status(403).json({ error: "Acesso negado" });
+      const [eventArtists] = await db.query(
+        "SELECT * FROM event_artists WHERE event_id = ? AND user_id = ?",
+        [id, req.user.id]
+      );
+      if (eventArtists.length === 0)
+        return res.status(403).json({ error: "Acesso negado" });
     }
 
-    // Buscar comprovantes de pagamento dos artistas
     const [artists] = await db.query(
-      `
-      SELECT user_id as artist_id, payment_proof_link, payment_proof_size, payment_proof_uploaded_at
-      FROM event_artists
-      WHERE event_id = ? AND payment_proof_link IS NOT NULL
-      `,
+      `SELECT user_id as artist_id, f.file_link, f.file_size, f.uploaded_at
+      FROM event_artists ea
+      LEFT JOIN files f ON f.entity_type = 'event_artist' AND f.entity_id = ea.user_id AND f.file_type = 'payment_proof' AND f.deleted_at IS NULL
+      WHERE ea.event_id = ?`,
       [id]
     );
 
-    // Buscar relatórios do evento
     const [reports] = await db.query(
-      `
-      SELECT id as report_id, file_link, file_size, file_uploaded_at, description
-      FROM event_reports
-      WHERE event_id = ?
-      `,
+      `SELECT id as report_id, f.file_link, f.file_size, f.uploaded_at, er.description
+      FROM event_reports er
+      LEFT JOIN files f ON f.entity_type = 'event_report' AND f.entity_id = er.id AND f.file_type = 'report' AND f.deleted_at IS NULL
+      WHERE er.event_id = ?`,
       [id]
     );
 
@@ -750,16 +642,16 @@ router.get("/files/events/:id", authenticateToken, async (req, res) => {
       payment_proofs: artists.map((artist) => ({
         type: "payment_proof",
         artist_id: artist.artist_id,
-        link: artist.payment_proof_link,
-        size: artist.payment_proof_size,
-        uploaded_at: artist.payment_proof_uploaded_at,
+        link: artist.file_link,
+        size: artist.file_size,
+        uploaded_at: artist.uploaded_at,
       })),
       reports: reports.map((report) => ({
         type: "report",
         report_id: report.report_id,
         link: report.file_link,
         size: report.file_size,
-        uploaded_at: report.file_uploaded_at,
+        uploaded_at: report.uploaded_at,
         description: report.description,
       })),
     };
@@ -770,5 +662,46 @@ router.get("/files/events/:id", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Erro ao listar arquivos do evento" });
   }
 });
+
+// GET /api/events/files/event_reports/:eventId/:reportId
+router.get(
+  "/files/event_reports/:eventId/:reportId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { eventId, reportId } = req.params;
+
+      if (!isValidUUID(eventId) || !isValidUUID(reportId)) {
+        return res.status(400).json({ error: "IDs inválidos" });
+      }
+
+      if (!["admin", "secretary"].includes(req.user.role)) {
+        return res.status(403).json({ error: "Acesso negado" });
+      }
+
+      const [files] = await db.query(
+        `SELECT file_link, mime_type
+      FROM files
+      WHERE entity_type = 'event_report' AND entity_id = ? AND file_type = 'report' AND deleted_at IS NULL`,
+        [reportId]
+      );
+
+      if (files.length === 0) {
+        return res.status(404).json({ error: "Relatório não encontrado" });
+      }
+
+      const file = files[0];
+      const mimeType = file.mime_type || "application/octet-stream";
+      res.setHeader("Content-Type", mimeType);
+      res.redirect(file.file_link);
+    } catch (error) {
+      console.error(
+        "[GET /files/event_reports/:eventId/:reportId] Erro:",
+        error
+      );
+      res.status(500).json({ error: "Erro ao buscar arquivo" });
+    }
+  }
+);
 
 module.exports = router;

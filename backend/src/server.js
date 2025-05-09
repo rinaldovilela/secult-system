@@ -12,7 +12,7 @@ const searchRoutes = require("./routes/searchRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const fileRoutes = require("./routes/fileRoutes");
 const db = require("./config/db");
-const { getStorageUsage } = require("./utils/google-drive-config");
+const DriveService = require("./utils/google-drive-config");
 
 const app = express();
 const server = http.createServer(app);
@@ -84,7 +84,7 @@ io.use((socket, next) => {
 
 io.on("connection", (socket) => {
   console.log(`[WebSocket] Usuário conectado: ${socket.user.id}`);
-  socket.join(socket.user.id.toString()); // Garantir que o ID seja uma string
+  socket.join(socket.user.id.toString());
 
   socket.on("disconnect", () => {
     console.log(`[WebSocket] Usuário desconectado: ${socket.user.id}`);
@@ -99,7 +99,8 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   try {
-    const storageUsage = await getStorageUsage();
+    await DriveService.initialize(); // Inicializar o DriveService
+    const storageUsage = await DriveService.getStorageUsage();
     console.log(`Espaço de armazenamento usado: ${storageUsage.used} bytes`);
     console.log(`Espaço total disponível: ${storageUsage.total} bytes`);
     console.log(
