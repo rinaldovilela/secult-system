@@ -1,4 +1,3 @@
-// components/layout/Header.tsx
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -52,6 +51,7 @@ interface User {
   name: string;
   role: string;
   profile_picture?: string;
+  files?: Array<{ entity_type: string; file_link: string }>;
 }
 
 export default function Header() {
@@ -76,7 +76,8 @@ export default function Header() {
       const response = await axios.get(`${BASE_URL}/api/users/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setUser(response.data);
+      const fetchedUser = response.data;
+      setUser(fetchedUser);
     } catch (error) {
       const errorMessage = axios.isAxiosError(error)
         ? `Erro ao buscar perfil: ${
@@ -104,7 +105,7 @@ export default function Header() {
   // Atalho de teclado para abrir o menu mobile
   useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
-      if (event.key === "[" || event.key === "[") {
+      if (event.key === "[") {
         setIsSheetOpen(true);
       }
     };
@@ -214,11 +215,9 @@ export default function Header() {
   const isAdminOrSecretary = user && ["admin", "secretary"].includes(user.role);
   const isArtistOrGroup = user && ["artist", "group"].includes(user.role);
 
-  const profilePictureUrl = user?.profile_picture
-    ? user.profile_picture.startsWith("data:image")
-      ? user.profile_picture
-      : `data:image/jpeg;base64,${user.profile_picture}`
-    : undefined;
+  const profilePictureUrl =
+    user?.files?.find((f) => f.entity_type === "user")?.file_link ||
+    "/default-avatar.png";
 
   return (
     <header className="bg-gradient-to-r from-primary to-primary/90 text-primary-foreground shadow-sm rounded-b-lg animate-in slide-in-from-top duration-300">
