@@ -86,7 +86,6 @@ class DriveService {
     const driveClient = DriveManager.getDriveClient(drive.id);
     const parentFolderId = await this.ensureFolderStructure(
       entityType === "user" ? entityId : null,
-
       entityType === "event_report" ? entityId : null
     );
 
@@ -196,7 +195,34 @@ class DriveService {
   }
 }
 
-// Cronjob
+// Rotina de limpeza física para soft delete
+cron.schedule("0 0 * * 0", async () => {
+  try {
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    const [filesToDelete] = await connection.query(
+      "SELECT id, file_id, drive_account FROM files WHERE deleted_at IS NOT NULL AND deleted_at < DATE_SUB(NOW(), INTERVAL 30 DAY)"
+    );
+
+    for (const file of filesToDelete) {
+      const driveClient = DriveManager.getDriveClient(file.drive_account);
+      await driveClient.files.delete({ fileId: file.file_id });
+
+      await connection.query("DELETE FROM files WHERE id = ?", [file.id]);
+    }
+
+    await connection.commit();
+    console.log("Rotina de limpeza de arquivos concluída com sucesso.");
+  } catch (error) {
+    await connection.rollback();
+    console.error("Erro na rotina de limpeza de arquivos:", error);
+  } finally {
+    connection.release();
+  }
+});
+
+// Cronjob existente para monitoramento de armazenamento
 cron.schedule("0 0 * * *", async () => {
   try {
     const [drives] = await db.query(

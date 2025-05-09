@@ -3,25 +3,112 @@ const { v4: uuidv4 } = require("uuid");
 const db = require("../config/db");
 const { authenticateToken, authorizeRole } = require("../middleware/auth");
 const multer = require("multer");
-const { google } = require("googleapis");
-const path = require("path");
+const DriveService = require("../utils/google-drive-config");
 
 const router = express.Router();
 
+// Configuração do multer com validação de tipos, tamanhos e quantidade
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
+  limits: { fileSize: 50 * 1024 * 1024 }, // Limite máximo geral (será sobrescrito por fileFilter)
+  fileFilter: async (req, file, cb) => {
+    // Tipos permitidos para eventos
     const allowedTypes = [
-      "image/jpeg",
-      "image/png",
-      "application/pdf",
-      "video/mp4",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "image/jpeg", // .jpg
+      "image/png", // .png
+      "video/mp4", // .mp4
+      "audio/mpeg", // .mp3
+      "application/pdf", // .pdf
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+      "application/zip", // .zip
+      "application/vnd.ms-excel", // .xls
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
     ];
-    if (allowedTypes.includes(file.mimetype)) cb(null, true);
-    else cb(new Error("Tipo de arquivo não permitido"), false);
+
+    // Limites de tamanho por tipo (em bytes)
+    const sizeLimits = {
+      "image/jpeg": 5 * 1024 * 1024, // 5 MB
+      "image/png": 5 * 1024 * 1024, // 5 MB
+      "video/mp4": 50 * 1024 * 1024, // 50 MB
+      "audio/mpeg": 10 * 1024 * 1024, // 10 MB
+      "application/pdf": 10 * 1024 * 1024, // 10 MB
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        5 * 1024 * 1024, // 5 MB
+      "application/zip": 50 * 1024 * 1024, // 50 MB
+      "application/vnd.ms-excel": 5 * 1024 * 1024, // 5 MB
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+        5 * 1024 * 1024, // 5 MB
+    };
+
+    // Validação de tipo
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(new Error("Tipo de arquivo não permitido"), false);
+    }
+
+    // Validação de tamanho
+    const maxSize = sizeLimits[file.mimetype];
+    if (file.size > maxSize) {
+      return cb(
+        new Error(
+          `Arquivo muito grande. Limite para ${file.mimetype} é ${maxSize / 1024 / 1024} MB`
+        ),
+        false
+      );
+    }
+
+    // Validação de quantidade
+    try {
+      const { id } = req.params; // eventId
+      if (!id) {
+        return cb(new Error("ID do evento não fornecido"), false);
+      }
+
+      if (req.path.includes("/reports")) {
+        // Categoria: Documentação/Relatórios (1–3 arquivos)
+        const [existingReports] = await db.query(
+          "SELECT COUNT(*) as count FROM event_reports WHERE event_id = ?",
+          [id]
+        );
+        const reportCount = existingReports[0].count;
+        if (reportCount >= 3) {
+          return cb(
+            new Error("Limite de 3 arquivos para relatórios excedido"),
+            false
+          );
+        }
+      } else if (req.path.includes("/artists")) {
+        // Categoria: Financeiro (5–20 arquivos)
+        const { artistId } = req.params;
+        const [existingPayments] = await db.query(
+          "SELECT COUNT(*) as count FROM files WHERE entity_id = ? AND entity_type = 'payment_proof' AND deleted_at IS NULL",
+          [`${id}_${artistId}`]
+        );
+        const paymentCount = existingPayments[0].count;
+        if (paymentCount >= 20) {
+          return cb(
+            new Error(
+              "Limite de 20 arquivos para comprovantes de pagamento excedido"
+            ),
+            false
+          );
+        }
+        if (paymentCount + 1 < 5) {
+          return cb(
+            new Error(
+              "Mínimo de 5 arquivos requerido para comprovantes de pagamento"
+            ),
+            false
+          );
+        }
+      }
+
+      cb(null, true);
+    } catch (error) {
+      cb(
+        new Error("Erro ao verificar limite de arquivos: " + error.message),
+        false
+      );
+    }
   },
 });
 
@@ -57,36 +144,6 @@ const createNotification = async (req, userId, type, message) => {
       error
     );
   }
-};
-
-const uploadToGoogleDrive = async (
-  file,
-  driveAccountId,
-  entityId,
-  entityType
-) => {
-  const credentialsPath = path.join(
-    __dirname,
-    `../config/drive_credentials_${driveAccountId}.json`
-  );
-  const auth = new google.auth.GoogleAuth({
-    keyFile: credentialsPath,
-    scopes: ["https://www.googleapis.com/auth/drive"],
-  });
-  const drive = google.drive({ version: "v3", auth });
-
-  const fileMetadata = {
-    name: `${entityType}_${entityId}_${Date.now()}_${file.originalname}`,
-    parents: [process.env.GOOGLE_DRIVE_FOLDER_ID || "root"],
-  };
-  const media = { mimeType: file.mimetype, body: file.buffer };
-
-  const response = await drive.files.create({
-    resource: fileMetadata,
-    media,
-    fields: "id, webViewLink",
-  });
-  return response.data.webViewLink;
 };
 
 router.post("/", authenticateToken, async (req, res) => {
@@ -358,32 +415,32 @@ router.patch(
       if (parsedIsPaid !== undefined) updates.is_paid = parsedIsPaid;
       if (amount !== undefined) updates.amount = amount;
       if (paymentProof) {
-        const [drive] = await db.query(
-          "SELECT id FROM drives WHERE is_active = TRUE LIMIT 1"
-        );
-        if (drive.length) {
-          const driveId = drive[0].id;
-          updates.payment_proof_url = await uploadToGoogleDrive(
-            paymentProof,
-            driveId,
-            `${id}_${artistId}`,
-            "payment_proof"
-          );
-          await db.query(
-            "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW())",
-            [
-              uuidv4(),
-              `${id}_${artistId}`,
-              "payment_proof",
-              updates.payment_proof_url,
-            ]
-          );
-        }
-      } else if (parsedIsPaid === false) {
-        await db.query(
-          "DELETE FROM files WHERE entity_id = ? AND entity_type = ?",
+        // Verificar se já existe um arquivo para esse entity_type
+        const [existingFile] = await db.query(
+          "SELECT file_link FROM files WHERE entity_id = ? AND entity_type = ? AND deleted_at IS NULL",
           [`${id}_${artistId}`, "payment_proof"]
         );
+        if (existingFile.length > 0) {
+          await DriveService.deleteFile(existingFile[0].file_link);
+        }
+
+        // Fazer o upload do novo arquivo
+        const uploadResult = await DriveService.uploadFile(
+          paymentProof,
+          "payment_proof",
+          `${id}_${artistId}`,
+          "document",
+          "financeiro"
+        );
+        updates.payment_proof_url = uploadResult.link;
+      } else if (parsedIsPaid === false) {
+        const [existingFile] = await db.query(
+          "SELECT file_link FROM files WHERE entity_id = ? AND entity_type = ? AND deleted_at IS NULL",
+          [`${id}_${artistId}`, "payment_proof"]
+        );
+        if (existingFile.length > 0) {
+          await DriveService.deleteFile(existingFile[0].file_link);
+        }
       }
 
       const fields = Object.keys(updates).filter(
@@ -479,27 +536,18 @@ router.post(
       if (events.length === 0)
         return res.status(404).json({ error: "Evento não encontrado" });
 
-      const [drive] = await db.query(
-        "SELECT id FROM drives WHERE is_active = TRUE LIMIT 1"
+      const uploadResult = await DriveService.uploadFile(
+        file,
+        "event_report",
+        id,
+        file_type,
+        "relatorio"
       );
-      if (drive.length) {
-        const driveId = drive[0].id;
-        const fileLink = await uploadToGoogleDrive(
-          file,
-          driveId,
-          `${id}_report`,
-          file_type
-        );
-        const reportId = uuidv4();
-        await db.query(
-          "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW())",
-          [reportId, `${id}_report`, file_type, fileLink]
-        );
-        await db.query(
-          "INSERT INTO event_reports (id, event_id, file_type, description, created_at) VALUES (?, ?, ?, ?, NOW())",
-          [reportId, id, file_type, description || null]
-        );
-      }
+      const reportId = uuidv4();
+      await db.query(
+        "INSERT INTO event_reports (id, event_id, file_type, description, created_at) VALUES (?, ?, ?, ?, NOW())",
+        [reportId, id, file_type, description || null]
+      );
 
       res.status(201).json({ message: "Relatório adicionado com sucesso" });
     } catch (error) {

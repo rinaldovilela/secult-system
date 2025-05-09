@@ -5,9 +5,7 @@ const db = require("../config/db");
 const { authenticateToken } = require("../middleware/auth");
 const bcrypt = require("bcrypt");
 const multer = require("multer");
-const { google } = require("googleapis");
-const fs = require("fs").promises;
-const path = require("path");
+const DriveService = require("../utils/google-drive-config");
 
 const isValidUUID = (uuid) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
@@ -17,10 +15,100 @@ router.use((req, res, next) => {
   next();
 });
 
+// Configuração do multer com validação de tipos, tamanhos e quantidade
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 }, // Limite máximo geral (será sobrescrito por fileFilter)
+  fileFilter: async (req, file, cb) => {
+    // Tipos permitidos para artistas/grupos
+    const allowedTypes = [
+      "image/jpeg", // .jpg, .jpeg
+      "image/png", // .png
+      "application/pdf", // .pdf
+      "application/msword", // .doc
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+      "video/mp4", // .mp4
+      "audio/mpeg", // .mp3
+      "audio/wav", // .wav
+      "application/zip", // .zip
+    ];
+
+    // Limites de tamanho por tipo (em bytes)
+    const sizeLimits = {
+      "image/jpeg": 5 * 1024 * 1024, // 5 MB
+      "image/png": 5 * 1024 * 1024, // 5 MB
+      "application/pdf": 10 * 1024 * 1024, // 10 MB
+      "application/msword": 5 * 1024 * 1024, // 5 MB
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        5 * 1024 * 1024, // 5 MB
+      "video/mp4": 50 * 1024 * 1024, // 50 MB
+      "audio/mpeg": 10 * 1024 * 1024, // 10 MB
+      "audio/wav": 10 * 1024 * 1024, // 10 MB
+      "application/zip": 50 * 1024 * 1024, // 50 MB
+    };
+
+    // Validação de tipo
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(new Error("Tipo de arquivo não permitido"), false);
+    }
+
+    // Validação de tamanho
+    const maxSize = sizeLimits[file.mimetype];
+    if (file.size > maxSize) {
+      return cb(
+        new Error(
+          `Arquivo muito grande. Limite para ${file.mimetype} é ${maxSize / 1024 / 1024} MB`
+        ),
+        false
+      );
+    }
+
+    // Validação de quantidade (máximo 10 arquivos por portfólio)
+    try {
+      let userId;
+      if (req.path === "/register" || req.path === "/") {
+        userId = uuidv4(); // Novo usuário, será gerado um ID
+      } else if (req.path === "/me") {
+        userId = req.user.id;
+      } else if (req.params.id) {
+        userId = req.params.id;
+      }
+
+      if (!userId) {
+        return cb(
+          new Error("Não foi possível determinar o ID do usuário"),
+          false
+        );
+      }
+
+      const [existingFiles] = await db.query(
+        "SELECT COUNT(*) as count FROM files WHERE entity_id = ? AND entity_type IN ('user', 'portfolio', 'video', 'related_files') AND deleted_at IS NULL",
+        [userId]
+      );
+      const fileCount = existingFiles[0].count;
+
+      // Considerar os arquivos que estão sendo enviados na requisição atual
+      const newFilesCount = Object.values(req.files || {}).reduce(
+        (total, files) => total + files.length,
+        0
+      );
+      if (fileCount + newFilesCount > 10) {
+        return cb(
+          new Error("Limite de 10 arquivos por portfólio excedido"),
+          false
+        );
+      }
+
+      cb(null, true);
+    } catch (error) {
+      cb(
+        new Error("Erro ao verificar limite de arquivos: " + error.message),
+        false
+      );
+    }
+  },
 });
+
 const handleMulterError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
@@ -91,40 +179,6 @@ const validateArtistData = async (req, res, next) => {
   next();
 };
 
-const uploadToGoogleDrive = async (
-  file,
-  driveAccountId,
-  entityId,
-  entityType
-) => {
-  const credentialsPath = path.join(
-    __dirname,
-    `../config/drive_credentials_${driveAccountId}.json`
-  );
-  const auth = new google.auth.GoogleAuth({
-    keyFile: credentialsPath,
-    scopes: ["https://www.googleapis.com/auth/drive"],
-  });
-  const drive = google.drive({ version: "v3", auth });
-
-  const fileMetadata = {
-    name: `${entityType}_${entityId}_${Date.now()}_${file.originalname}`,
-    parents: [process.env.GOOGLE_DRIVE_FOLDER_ID || "root"],
-  };
-  const media = {
-    mimeType: file.mimetype,
-    body: file.buffer,
-  };
-
-  const response = await drive.files.create({
-    resource: fileMetadata,
-    media: media,
-    fields: "id, webViewLink",
-  });
-
-  return response.data.webViewLink;
-};
-
 router.post(
   "/register",
   upload.fields([
@@ -178,62 +232,43 @@ router.post(
       );
 
       if (["artist", "group"].includes(role)) {
-        const [drive] = await connection.query(
-          "SELECT id FROM drives WHERE is_active = TRUE LIMIT 1"
-        );
-        if (!drive.length)
-          throw new Error("Nenhuma conta de drive ativa encontrada");
-
-        const driveId = drive[0].id;
         const fileLinks = {};
 
         if (files.profile_picture) {
-          fileLinks.profile_picture = await uploadToGoogleDrive(
+          const uploadResult = await DriveService.uploadFile(
             files.profile_picture[0],
-            driveId,
+            "user",
             userId,
-            "user"
+            "photo"
           );
-          await connection.query(
-            "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW())",
-            [uuidv4(), userId, "user", fileLinks.profile_picture]
-          );
+          fileLinks.profile_picture = uploadResult.link;
         }
         if (files.portfolio) {
-          fileLinks.portfolio = await uploadToGoogleDrive(
+          const uploadResult = await DriveService.uploadFile(
             files.portfolio[0],
-            driveId,
+            "portfolio",
             userId,
-            "portfolio"
+            "document"
           );
-          await connection.query(
-            "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW())",
-            [uuidv4(), userId, "portfolio", fileLinks.portfolio]
-          );
+          fileLinks.portfolio = uploadResult.link;
         }
         if (files.video) {
-          fileLinks.video = await uploadToGoogleDrive(
+          const uploadResult = await DriveService.uploadFile(
             files.video[0],
-            driveId,
+            "video",
             userId,
             "video"
           );
-          await connection.query(
-            "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW())",
-            [uuidv4(), userId, "video", fileLinks.video]
-          );
+          fileLinks.video = uploadResult.link;
         }
         if (files.related_files) {
-          fileLinks.related_files = await uploadToGoogleDrive(
+          const uploadResult = await DriveService.uploadFile(
             files.related_files[0],
-            driveId,
+            "related_files",
             userId,
-            "related_files"
+            "document"
           );
-          await connection.query(
-            "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW())",
-            [uuidv4(), userId, "related_files", fileLinks.related_files]
-          );
+          fileLinks.related_files = uploadResult.link;
         }
 
         await connection.query(
@@ -355,20 +390,24 @@ router.put(
           [bio, area_of_expertise, req.user.id]
         );
 
-        const [drive] = await db.query(
-          "SELECT id FROM drives WHERE is_active = TRUE LIMIT 1"
-        );
-        if (files.profile_picture && drive.length) {
-          const driveId = drive[0].id;
-          const fileLink = await uploadToGoogleDrive(
-            files.profile_picture[0],
-            driveId,
-            req.user.id,
-            "user"
+        if (files.profile_picture) {
+          // Verificar se já existe um arquivo para esse entity_type
+          const [existingFile] = await db.query(
+            "SELECT file_link FROM files WHERE entity_id = ? AND entity_type = ? AND deleted_at IS NULL",
+            [req.user.id, "user"]
           );
-          await db.query(
-            "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE file_link = ?, uploaded_at = NOW()",
-            [uuidv4(), req.user.id, "user", fileLink, fileLink]
+
+          if (existingFile.length > 0) {
+            // Deletar o arquivo antigo
+            await DriveService.deleteFile(existingFile[0].file_link);
+          }
+
+          // Fazer o upload do novo arquivo
+          const uploadResult = await DriveService.uploadFile(
+            files.profile_picture[0],
+            "user",
+            req.user.id,
+            "photo"
           );
         }
       }
@@ -483,62 +522,43 @@ router.post(
       );
 
       if (["artist", "group"].includes(role)) {
-        const [drive] = await db.query(
-          "SELECT id FROM drives WHERE is_active = TRUE LIMIT 1"
-        );
-        if (!drive.length)
-          throw new Error("Nenhuma conta de drive ativa encontrada");
-
-        const driveId = drive[0].id;
         const fileLinks = {};
 
         if (files.profile_picture) {
-          fileLinks.profile_picture = await uploadToGoogleDrive(
+          const uploadResult = await DriveService.uploadFile(
             files.profile_picture[0],
-            driveId,
+            "user",
             userId,
-            "user"
+            "photo"
           );
-          await db.query(
-            "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW())",
-            [uuidv4(), userId, "user", fileLinks.profile_picture]
-          );
+          fileLinks.profile_picture = uploadResult.link;
         }
         if (files.portfolio) {
-          fileLinks.portfolio = await uploadToGoogleDrive(
+          const uploadResult = await DriveService.uploadFile(
             files.portfolio[0],
-            driveId,
+            "portfolio",
             userId,
-            "portfolio"
+            "document"
           );
-          await db.query(
-            "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW())",
-            [uuidv4(), userId, "portfolio", fileLinks.portfolio]
-          );
+          fileLinks.portfolio = uploadResult.link;
         }
         if (files.video) {
-          fileLinks.video = await uploadToGoogleDrive(
+          const uploadResult = await DriveService.uploadFile(
             files.video[0],
-            driveId,
+            "video",
             userId,
             "video"
           );
-          await db.query(
-            "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW())",
-            [uuidv4(), userId, "video", fileLinks.video]
-          );
+          fileLinks.video = uploadResult.link;
         }
         if (files.related_files) {
-          fileLinks.related_files = await uploadToGoogleDrive(
+          const uploadResult = await DriveService.uploadFile(
             files.related_files[0],
-            driveId,
+            "related_files",
             userId,
-            "related_files"
+            "document"
           );
-          await db.query(
-            "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW())",
-            [uuidv4(), userId, "related_files", fileLinks.related_files]
-          );
+          fileLinks.related_files = uploadResult.link;
         }
 
         await db.query(
@@ -618,74 +638,71 @@ router.put(
         return res.status(400).json({ error: "Email já está em uso" });
       }
 
-      const [drive] = await db.query(
-        "SELECT id FROM drives WHERE is_active = TRUE LIMIT 1"
-      );
-      if (!drive.length)
-        throw new Error("Nenhuma conta de drive ativa encontrada");
-
-      const driveId = drive[0].id;
       const fileLinks = {};
 
       if (files.profile_picture) {
-        fileLinks.profile_picture = await uploadToGoogleDrive(
+        const [existingFile] = await db.query(
+          "SELECT file_link FROM files WHERE entity_id = ? AND entity_type = ? AND deleted_at IS NULL",
+          [id, "user"]
+        );
+        if (existingFile.length > 0) {
+          await DriveService.deleteFile(existingFile[0].file_link);
+        }
+        const uploadResult = await DriveService.uploadFile(
           files.profile_picture[0],
-          driveId,
+          "user",
           id,
-          "user"
+          "photo"
         );
-        await db.query(
-          "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE file_link = ?, uploaded_at = NOW()",
-          [
-            uuidv4(),
-            id,
-            "user",
-            fileLinks.profile_picture,
-            fileLinks.profile_picture,
-          ]
-        );
+        fileLinks.profile_picture = uploadResult.link;
       }
       if (files.portfolio) {
-        fileLinks.portfolio = await uploadToGoogleDrive(
+        const [existingFile] = await db.query(
+          "SELECT file_link FROM files WHERE entity_id = ? AND entity_type = ? AND deleted_at IS NULL",
+          [id, "portfolio"]
+        );
+        if (existingFile.length > 0) {
+          await DriveService.deleteFile(existingFile[0].file_link);
+        }
+        const uploadResult = await DriveService.uploadFile(
           files.portfolio[0],
-          driveId,
+          "portfolio",
           id,
-          "portfolio"
+          "document"
         );
-        await db.query(
-          "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE file_link = ?, uploaded_at = NOW()",
-          [uuidv4(), id, "portfolio", fileLinks.portfolio, fileLinks.portfolio]
-        );
+        fileLinks.portfolio = uploadResult.link;
       }
       if (files.video) {
-        fileLinks.video = await uploadToGoogleDrive(
+        const [existingFile] = await db.query(
+          "SELECT file_link FROM files WHERE entity_id = ? AND entity_type = ? AND deleted_at IS NULL",
+          [id, "video"]
+        );
+        if (existingFile.length > 0) {
+          await DriveService.deleteFile(existingFile[0].file_link);
+        }
+        const uploadResult = await DriveService.uploadFile(
           files.video[0],
-          driveId,
+          "video",
           id,
           "video"
         );
-        await db.query(
-          "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE file_link = ?, uploaded_at = NOW()",
-          [uuidv4(), id, "video", fileLinks.video, fileLinks.video]
-        );
+        fileLinks.video = uploadResult.link;
       }
       if (files.related_files) {
-        fileLinks.related_files = await uploadToGoogleDrive(
+        const [existingFile] = await db.query(
+          "SELECT file_link FROM files WHERE entity_id = ? AND entity_type = ? AND deleted_at IS NULL",
+          [id, "related_files"]
+        );
+        if (existingFile.length > 0) {
+          await DriveService.deleteFile(existingFile[0].file_link);
+        }
+        const uploadResult = await DriveService.uploadFile(
           files.related_files[0],
-          driveId,
+          "related_files",
           id,
-          "related_files"
+          "document"
         );
-        await db.query(
-          "INSERT INTO files (id, entity_id, entity_type, file_link, uploaded_at) VALUES (?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE file_link = ?, uploaded_at = NOW()",
-          [
-            uuidv4(),
-            id,
-            "related_files",
-            fileLinks.related_files,
-            fileLinks.related_files,
-          ]
-        );
+        fileLinks.related_files = uploadResult.link;
       }
 
       await db.query(
